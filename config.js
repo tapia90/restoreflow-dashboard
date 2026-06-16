@@ -1,4 +1,4 @@
 window.RESTOREFLOW_CONFIG = {
   supabaseUrl: "https://nchdunbjpdhjqumebhty.supabase.co",
-  supabaseAnonKey: "sb_publishable_ltaNA7nnVozoSCOcZIjg"
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jaGR1bmJqcGRoanF1bWViaHR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMzA5NTQsImV4cCI6MjA5NjgwNjk1NH0.VXWDXFHCaavSyLCehcaQRJsrv94F8a_6BOU_AdFMp5U"
 };
