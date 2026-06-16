@@ -430,7 +430,7 @@ document.querySelector("#authForm").onsubmit=async event=>{
   const password=document.querySelector("#authPassword").value;
   document.querySelector("#authSubmit").disabled=true;
   const result=authMode==="signup"
-    ? await cloudClient.auth.signUp({email,password})
+    ? await cloudClient.auth.signUp({email,password,options:{emailRedirectTo:"https://tapia90.github.io/restoreflow-dashboard/"}})
     : await cloudClient.auth.signInWithPassword({email,password});
   document.querySelector("#authSubmit").disabled=false;
   if (result.error) return setAuthError(result.error.message);
