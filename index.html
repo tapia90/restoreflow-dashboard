@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RestoreFlow | Project Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-card">
+      <div class="brand auth-brand">
+        <div class="brand-mark">R</div>
+        <div><strong>RestoreFlow</strong><span>Project operations</span></div>
+      </div>
+      <div id="cloudSetupNotice" class="setup-notice">
+        <strong>Cloud setup required</strong>
+        <p>The app is ready, but its Supabase connection has not been added yet.</p>
+      </div>
+      <form id="authForm">
+        <p class="eyebrow">SECURE ACCESS</p>
+        <h1 id="authTitle">Sign in</h1>
+        <p class="auth-copy" id="authCopy">Use the same account on your computer, iPad, and phone.</p>
+        <label>Email address<input id="authEmail" type="email" autocomplete="email" required placeholder="you@company.com"></label>
+        <label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="8" required placeholder="At least 8 characters"></label>
+        <div class="auth-error" id="authError"></div>
+        <button class="btn primary auth-submit" id="authSubmit">Sign in</button>
+        <button type="button" class="auth-switch" id="authSwitch">Create the owner account</button>
+      </form>
+    </div>
+  </div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">R</div>
+        <div><strong>RestoreFlow</strong><span>Project operations</span></div>
+      </div>
+
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <button class="nav-item active" data-view="overview"><span class="nav-icon">⌂</span>Overview</button>
+        <button class="nav-item" data-view="pipeline"><span class="nav-icon">▥</span>Job pipeline <span class="nav-count">12</span></button>
+        <button class="nav-item" data-view="jobs"><span class="nav-icon">□</span>All jobs</button>
+        <button class="nav-item" data-view="calendar"><span class="nav-icon">▦</span>Schedule</button>
+        <button class="nav-item" data-view="team"><span class="nav-icon">♙</span>Team</button>
+      </nav>
+
+      <div class="sidebar-section">
+        <p>MANAGEMENT</p>
+        <button class="nav-item" data-view="reports"><span class="nav-icon">↗</span>Reports</button>
+        <button class="nav-item" data-view="documents"><span class="nav-icon">▤</span>Documents</button>
+        <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span>Settings</button>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="storage-row"><span>Document storage</span><strong>64%</strong></div>
+        <div class="progress"><span></span></div>
+        <small>6.4 GB of 10 GB used</small>
+        <div class="profile">
+          <div class="avatar">RS</div>
+          <div><strong id="profileName">Owner</strong><span id="profileEmail">Administrator</span></div>
+          <button id="signOutBtn" aria-label="Sign out" title="Sign out">↪</button>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button class="mobile-menu" aria-label="Open menu">☰</button>
+        <div class="global-search">
+          <span>⌕</span>
+          <input type="search" id="globalSearch" placeholder="Search jobs, customers, job numbers...">
+          <kbd>⌘ K</kbd>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" aria-label="Notifications">♢<span class="notification-dot"></span></button>
+          <button class="btn primary" id="newJobBtn"><span>＋</span> New job</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="view active" id="overviewView">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">WEDNESDAY, JUNE 10</p>
+              <h1>Good morning, Roy.</h1>
+              <p>Here’s what needs your attention across the operation.</p>
+            </div>
+            <div class="heading-actions">
+              <button class="btn secondary" id="exportBtn">↓ Export backup</button>
+              <button class="btn secondary">This month⌄</button>
+            </div>
+          </div>
+
+          <div class="attention-banner">
+            <div class="attention-icon">!</div>
+            <div><strong>4 items need attention</strong><span>Two jobs are past their target date and two documents are awaiting approval.</span></div>
+            <button data-view-target="jobs">Review items →</button>
+          </div>
+
+          <div class="metric-grid">
+            <article class="metric-card">
+              <div class="metric-top"><span class="metric-icon blue">▣</span><span class="trend positive">↗ 8.2%</span></div>
+              <p>Active jobs</p><h2>12</h2><small>Across 7 project stages</small>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span class="metric-icon orange">◷</span><span class="trend warning">3 overdue</span></div>
+              <p>Open tasks</p><h2>38</h2><small>11 due this week</small>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span class="metric-icon green">$</span><span class="trend positive">↗ 12.4%</span></div>
+              <p>Active contract value</p><h2>$284.5k</h2><small>$76.2k pending approval</small>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span class="metric-icon purple">✓</span><span class="trend neutral">86% on time</span></div>
+              <p>Jobs closed this month</p><h2>7</h2><small>Avg. cycle time: 18 days</small>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="panel pipeline-panel">
+              <div class="panel-header">
+                <div><h3>Job pipeline</h3><p>Current work by project stage</p></div>
+                <button class="text-btn" data-view-target="pipeline">View pipeline →</button>
+              </div>
+              <div class="pipeline-chart" id="pipelineChart"></div>
+            </article>
+
+            <article class="panel priorities-panel">
+              <div class="panel-header"><div><h3>Today’s priorities</h3><p>Tasks requiring action</p></div><span class="pill">5 tasks</span></div>
+              <div id="priorityList"></div>
+            </article>
+          </div>
+
+          <article class="panel jobs-panel">
+            <div class="panel-header">
+              <div><h3>Active jobs</h3><p>Recent activity across your projects</p></div>
+              <div class="table-tools">
+                <button class="btn secondary small">≡ Filter</button>
+                <button class="text-btn" data-view-target="jobs">View all jobs →</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Job / Customer</th><th>Loss type</th><th>Stage</th><th>Project manager</th><th>Progress</th><th>Target date</th><th></th></tr></thead>
+                <tbody id="activeJobsTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="pipelineView">
+          <div class="page-heading">
+            <div><p class="eyebrow">OPERATIONS</p><h1>Job pipeline</h1><p>Move work forward and spot bottlenecks at a glance.</p></div>
+            <button class="btn primary new-job-trigger"><span>＋</span> New job</button>
+          </div>
+          <div class="kanban" id="kanbanBoard"></div>
+        </section>
+
+        <section class="view" id="jobsView">
+          <div class="page-heading">
+            <div><p class="eyebrow">PROJECTS</p><h1>All jobs</h1><p>Every active and completed restoration project.</p></div>
+            <button class="btn primary new-job-trigger"><span>＋</span> New job</button>
+          </div>
+          <article class="panel">
+            <div class="job-filters">
+              <div class="filter-search"><span>⌕</span><input id="jobSearch" placeholder="Search jobs..."></div>
+              <select id="stageFilter"><option value="">All stages</option></select>
+              <select id="typeFilter"><option value="">All loss types</option><option>Water</option><option>Fire</option><option>Mold</option><option>Reconstruction</option></select>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Job / Customer</th><th>Loss type</th><th>Stage</th><th>Project manager</th><th>Value</th><th>Progress</th><th>Target date</th></tr></thead>
+                <tbody id="allJobsTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="view placeholder-view" id="placeholderView">
+          <div class="placeholder-card">
+            <span>◫</span><h2 id="placeholderTitle">Coming next</h2>
+            <p>This area is ready for your workflow. We’ll shape it around how your team actually works.</p>
+            <button class="btn secondary" data-view-target="overview">Back to overview</button>
+          </div>
+        </section>
+
+        <section class="view" id="jobDetailView">
+          <button class="back-link" data-view-target="jobs">← All jobs</button>
+          <div id="jobDetail"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="jobModal">
+    <div class="modal">
+      <div class="modal-header"><div><p class="eyebrow" id="jobModalEyebrow">NEW PROJECT</p><h2 id="jobModalTitle">Create a job</h2></div><button class="modal-close" aria-label="Close">×</button></div>
+      <form id="newJobForm">
+        <input type="hidden" name="originalId">
+        <div class="form-grid">
+          <label>Customer name<input name="customer" required placeholder="First and last name"></label>
+          <label>Loss type<select name="type"><option>Water</option><option>Fire</option><option>Mold</option><option>Reconstruction</option></select></label>
+          <label class="full">Property address<input name="address" required placeholder="Street, city, state ZIP"></label>
+          <label>Job number<input name="jobNumber" placeholder="Auto-generated if blank"></label>
+          <label>Project manager<select name="manager"><option>Roy Smith</option><option>Elena Ruiz</option><option>Marcus Lee</option><option>Dana Brooks</option></select></label>
+          <label>Current stage<select name="stage"><option>Inspection</option><option>Estimate</option><option>Abatement</option><option>Mitigation</option><option>Monitoring</option><option>Repairs</option><option>Final</option></select></label>
+          <label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Urgent</option></select></label>
+          <label>Insurance carrier<input name="insurer" placeholder="Carrier or self-pay"></label>
+          <label>Estimated value<input name="value" type="number" min="0" placeholder="0"></label>
+          <label>Target completion<input name="target" type="date" required></label>
+        </div>
+        <div class="modal-actions"><button type="button" class="btn secondary modal-cancel">Cancel</button><button type="submit" class="btn primary" id="jobSubmitBtn">Create job</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="taskModal">
+    <div class="modal compact-modal">
+      <div class="modal-header"><div><p class="eyebrow">JOB CHECKLIST</p><h2>Add a task</h2></div><button class="task-modal-close modal-close" aria-label="Close task form">×</button></div>
+      <form id="newTaskForm">
+        <input type="hidden" name="jobId">
+        <div class="form-grid">
+          <label class="full">Task name<input name="title" required placeholder="What needs to be completed?"></label>
+          <label>Assigned to<input name="assignee" required placeholder="Person or crew"></label>
+          <label>Due date<input name="due" type="date"></label>
+        </div>
+        <div class="modal-actions"><button type="button" class="btn secondary task-modal-cancel">Cancel</button><button type="submit" class="btn primary">Add task</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="confirm-bar" id="confirmBar">
+    <div><strong>Delete this job?</strong><span>This cannot be undone.</span></div>
+    <button class="btn secondary" id="cancelDeleteBtn">Cancel</button>
+    <button class="btn danger" id="confirmDeleteBtn">Delete job</button>
+  </div>
+
+  <div class="toast" id="toast"><span>✓</span><div><strong id="toastTitle">Saved</strong><p id="toastMessage">Your changes were saved.</p></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
