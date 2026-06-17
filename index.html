@@ -205,8 +205,8 @@
           <label>Loss type<select name="type"><option>Water</option><option>Fire</option><option>Mold</option><option>Reconstruction</option></select></label>
           <label class="full">Property address<input name="address" required placeholder="Street, city, state ZIP"></label>
           <label>Job number<input name="jobNumber" placeholder="Auto-generated if blank"></label>
-          <label>Project manager<select name="manager"><option>Roy Smith</option><option>Elena Ruiz</option><option>Marcus Lee</option><option>Dana Brooks</option></select></label>
-          <label>Current stage<select name="stage"><option>Inspection</option><option>Estimate</option><option>Abatement</option><option>Mitigation</option><option>Monitoring</option><option>Repairs</option><option>Final</option></select></label>
+          <label>Project manager<input name="manager" placeholder="Enter project manager"></label>
+          <label>Current stage<select name="stage"><option>Assessment</option><option>Stabilizing</option><option>Mitigation</option><option>Abatement</option><option>Monitoring</option><option>Repairs</option><option>Final</option></select></label>
           <label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Urgent</option></select></label>
           <label>Insurance carrier<input name="insurer" placeholder="Carrier or self-pay"></label>
           <label>Estimated value<input name="value" type="number" min="0" placeholder="0"></label>
@@ -224,8 +224,6 @@
         <input type="hidden" name="jobId">
         <div class="form-grid">
           <label class="full">Task name<input name="title" required placeholder="What needs to be completed?"></label>
-          <label>Assigned to<input name="assignee" required placeholder="Person or crew"></label>
-          <label>Due date<input name="due" type="date"></label>
         </div>
         <div class="modal-actions"><button type="button" class="btn secondary task-modal-cancel">Cancel</button><button type="submit" class="btn primary">Add task</button></div>
       </form>
@@ -241,6 +239,6 @@
   <div class="toast" id="toast"><span>✓</span><div><strong id="toastTitle">Saved</strong><p id="toastMessage">Your changes were saved.</p></div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=20260615"></script>
-  <script src="app.js?v=20260615b"></script>
+  <script src="app.js?v=20260615c"></script>
 </body>
 </html>

@@ -1,33 +1,19 @@
-const stages = ["Inspection", "Estimate", "Abatement", "Mitigation", "Monitoring", "Repairs", "Final"];
-const stageColors = ["#e5a03f", "#8b98aa", "#d56b35", "#3e7bdd", "#2c9a79", "#7653c8", "#3b9a58"];
+const stages = ["Assessment", "Stabilizing", "Mitigation", "Abatement", "Monitoring", "Repairs", "Final"];
+const stageColors = ["#e5a03f", "#3e7bdd", "#2c9a79", "#d56b35", "#8b98aa", "#7653c8", "#3b9a58"];
+const stageMigration = {Inspection:"Assessment", Estimate:"Assessment"};
 const storageKey = "restoreflow-jobs-v2";
 const legacyStorageKey = "restoreflow-jobs";
 const defaultTasks = target => [
-  {id:crypto.randomUUID(),title:"Initial site inspection",assignee:"Project manager",due:"",done:true},
-  {id:crypto.randomUUID(),title:"Work authorization signed",assignee:"Office",due:"",done:true},
-  {id:crypto.randomUUID(),title:"Material test results reviewed",assignee:"Project manager",due:"",done:false},
-  {id:crypto.randomUUID(),title:"Abatement completed if required",assignee:"Abatement contractor",due:"",done:false},
-  {id:crypto.randomUUID(),title:"Daily moisture documentation",assignee:"Field crew",due:"",done:false},
-  {id:crypto.randomUUID(),title:"Remove drying equipment",assignee:"Field crew",due:"",done:false},
-  {id:crypto.randomUUID(),title:"Customer completion certificate",assignee:"Office",due:target || "",done:false}
+  {id:crypto.randomUUID(),title:"Initial assessment",assignee:"",due:"",done:true},
+  {id:crypto.randomUUID(),title:"Work authorization signed",assignee:"",due:"",done:true},
+  {id:crypto.randomUUID(),title:"Material test results reviewed",assignee:"",due:"",done:false},
+  {id:crypto.randomUUID(),title:"Mitigation / demo completed",assignee:"",due:"",done:false},
+  {id:crypto.randomUUID(),title:"Abatement completed if required",assignee:"",due:"",done:false},
+  {id:crypto.randomUUID(),title:"Daily moisture documentation",assignee:"",due:"",done:false},
+  {id:crypto.randomUUID(),title:"Remove drying equipment",assignee:"",due:"",done:false},
+  {id:crypto.randomUUID(),title:"Customer completion certificate",assignee:"",due:target || "",done:false}
 ];
-const seedJobs = [
-  ["RF-1048","Sarah Mitchell","1842 Rosewood Ave, Pasadena, CA","Water","Mitigation","Roy Smith",42,"2026-06-12",28600,"State Farm","High","Pending","Not required"],
-  ["RF-1047","David Chen","906 Highland Dr, Glendale, CA","Fire","Estimate","Elena Ruiz",18,"2026-06-14",47250,"Allstate","Normal","Pending","Not required"],
-  ["RF-1046","Monica Reyes","3377 Valley View Rd, Burbank, CA","Mold","Abatement","Marcus Lee",63,"2026-06-10",12380,"USAA","High","Hot","In progress"],
-  ["RF-1045","James Wilson","420 Oak Crest Ln, Arcadia, CA","Reconstruction","Repairs","Dana Brooks",76,"2026-06-21",68900,"Farmers","Normal","Clear","Completed"],
-  ["RF-1044","Priya Patel","1158 E California Blvd, Pasadena, CA","Water","Final","Roy Smith",94,"2026-06-11",19840,"Liberty Mutual","Normal","Clear","Not required"],
-  ["RF-1043","Robert Torres","521 Mission St, San Marino, CA","Water","Inspection","Elena Ruiz",8,"2026-06-18",8750,"Progressive","Normal","Pending","Not required"],
-  ["RF-1042","Angela Brooks","78 Canyon View, Altadena, CA","Fire","Mitigation","Marcus Lee",35,"2026-06-16",35100,"Travelers","High","Clear","Completed"],
-  ["RF-1041","Kevin Park","221 Orange Grove, Pasadena, CA","Water","Monitoring","Dana Brooks",55,"2026-06-09",15400,"State Farm","High","Clear","Not required"],
-  ["RF-1040","Lisa Morgan","440 W Broadway, Glendale, CA","Reconstruction","Repairs","Roy Smith",71,"2026-06-28",31900,"Allstate","Normal","Clear","Completed"],
-  ["RF-1039","Anthony White","92 Sierra Madre Blvd, Arcadia, CA","Mold","Inspection","Elena Ruiz",5,"2026-06-19",9200,"Self-pay","Normal","Pending","Pending"],
-  ["RF-1038","Emily Johnson","670 N Lake Ave, Pasadena, CA","Water","Estimate","Dana Brooks",22,"2026-06-15",16400,"Farmers","Normal","Pending","Not required"],
-  ["RF-1037","Michael Davis","188 Grandview Ave, Glendale, CA","Fire","Final","Marcus Lee",97,"2026-06-13",54500,"USAA","Normal","Clear","Completed"]
-].map(([id,customer,address,type,stage,manager,progress,targetDate,value,insurer,priority,materialStatus,abatementStatus]) => ({
-  id,jobNumber:id,customer,address,type,stage,manager,progress,targetDate,value,insurer,priority,materialStatus,abatementStatus,
-  tasks:defaultTasks(targetDate),notes:[],createdAt:new Date().toISOString()
-}));
+const seedJobs = [];
 
 let activeJobId = null;
 let pendingDeleteId = null;
@@ -48,7 +34,7 @@ function loadJobs() {
 function normalizeJobs(list) {
   return list.map(job => {
     const targetDate = job.targetDate || parseLegacyDate(job.target);
-    const stage = stages.includes(job.stage) ? job.stage : "Final";
+    const stage = stages.includes(job.stage) ? job.stage : stageMigration[job.stage] || "Final";
     return {
       ...job, id:job.id || job.jobNumber, jobNumber:job.jobNumber || job.id, stage,
       targetDate, insurer:job.insurer || "Pending", priority:job.priority || "Normal",
@@ -311,7 +297,7 @@ function openJobModal(job=null) {
     ["customer","type","address","jobNumber","manager","stage","priority","insurer","value"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
     jobForm.elements.target.value=job.targetDate || "";
   } else {
-    jobForm.elements.stage.value="Inspection";
+    jobForm.elements.stage.value="Assessment";
     jobForm.elements.priority.value="Normal";
   }
   jobModal.classList.add("open");
@@ -346,7 +332,7 @@ document.querySelector("#newTaskForm").onsubmit=event=>{
   const data=Object.fromEntries(new FormData(event.target));
   const job=jobs.find(item=>item.id===data.jobId);
   if (!job) return;
-  job.tasks.push({id:crypto.randomUUID(),title:data.title,assignee:data.assignee,due:data.due,done:false});
+  job.tasks.push({id:crypto.randomUUID(),title:data.title,assignee:"",due:"",done:false});
   closeTaskModal();saveJobs();renderDetail(job.id);showToast("Task added","The checklist was updated.");
 };
 
@@ -428,9 +414,10 @@ document.querySelector("#authForm").onsubmit=async event=>{
   event.preventDefault(); setAuthError();
   const email=document.querySelector("#authEmail").value.trim();
   const password=document.querySelector("#authPassword").value;
+  const redirectTo="https://tapia90.github.io/restoreflow-dashboard/";
   document.querySelector("#authSubmit").disabled=true;
   const result=authMode==="signup"
-    ? await cloudClient.auth.signUp({email,password,options:{emailRedirectTo:"https://tapia90.github.io/restoreflow-dashboard/"}})
+    ? await cloudClient.auth.signUp({email,password,options:{emailRedirectTo:redirectTo}})
     : await cloudClient.auth.signInWithPassword({email,password});
   document.querySelector("#authSubmit").disabled=false;
   if (result.error) return setAuthError(result.error.message);
