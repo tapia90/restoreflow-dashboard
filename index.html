@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260617">
 </head>
 <body>
   <div class="auth-screen" id="authScreen">
@@ -209,6 +209,7 @@
           <label>Current stage<select name="stage"><option>Assessment</option><option>Stabilizing</option><option>Mitigation</option><option>Abatement</option><option>Monitoring</option><option>Repairs</option><option>Final</option></select></label>
           <label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Urgent</option></select></label>
           <label>Insurance carrier<input name="insurer" placeholder="Carrier or self-pay"></label>
+          <label class="full">Document folder link<input name="documentFolder" type="url" placeholder="Paste Google Drive, OneDrive, Dropbox, or job folder link"></label>
           <label>Estimated value<input name="value" type="number" min="0" placeholder="0"></label>
           <label>Target completion<input name="target" type="date" required></label>
         </div>
@@ -239,6 +240,6 @@
   <div class="toast" id="toast"><span>✓</span><div><strong id="toastTitle">Saved</strong><p id="toastMessage">Your changes were saved.</p></div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=20260615"></script>
-  <script src="app.js?v=20260615c"></script>
+  <script src="app.js?v=20260617"></script>
 </body>
 </html>

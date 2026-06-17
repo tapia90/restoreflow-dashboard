@@ -38,6 +38,7 @@ function normalizeJobs(list) {
     return {
       ...job, id:job.id || job.jobNumber, jobNumber:job.jobNumber || job.id, stage,
       targetDate, insurer:job.insurer || "Pending", priority:job.priority || "Normal",
+      documentFolder:job.documentFolder || "",
       materialStatus:job.materialStatus || "Pending",
       abatementStatus:job.abatementStatus || (stage === "Abatement" ? "In progress" : "Not required"),
       tasks:Array.isArray(job.tasks) ? job.tasks : defaultTasks(targetDate),
@@ -198,6 +199,7 @@ function renderDetail(id) {
           <div class="info-grid">
             <div class="info-item"><span>Job number</span><strong>${escapeHtml(job.jobNumber)}</strong></div><div class="info-item"><span>Insurance carrier</span><strong>${escapeHtml(job.insurer)}</strong></div><div class="info-item"><span>Loss type</span><strong>${escapeHtml(job.type)}</strong></div>
             <div class="info-item"><span>Project manager</span><strong>${escapeHtml(job.manager)}</strong></div><div class="info-item"><span>Target completion</span><strong class="${isLate(job)?"late-date":""}">${formatDate(job.targetDate)}</strong></div><div class="info-item"><span>Priority</span><strong>${escapeHtml(job.priority)}</strong></div>
+            <div class="info-item"><span>Documents</span>${job.documentFolder?`<a href="${escapeAttribute(job.documentFolder)}" target="_blank" rel="noopener">Open document folder</a>`:`<strong>Not added</strong>`}</div>
           </div>
         </article>
         <article class="panel">
@@ -287,6 +289,9 @@ function showView(name) {
 
 const jobModal=document.querySelector("#jobModal");
 const jobForm=document.querySelector("#newJobForm");
+function updateModalLock() {
+  document.body.classList.toggle("modal-open", jobModal.classList.contains("open") || taskModal.classList.contains("open"));
+}
 function openJobModal(job=null) {
   jobForm.reset();
   jobForm.elements.originalId.value=job?.id || "";
@@ -294,20 +299,21 @@ function openJobModal(job=null) {
   document.querySelector("#jobModalTitle").textContent=job?"Edit job":"Create a job";
   document.querySelector("#jobSubmitBtn").textContent=job?"Save changes":"Create job";
   if (job) {
-    ["customer","type","address","jobNumber","manager","stage","priority","insurer","value"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
+    ["customer","type","address","jobNumber","manager","stage","priority","insurer","documentFolder","value"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
     jobForm.elements.target.value=job.targetDate || "";
   } else {
     jobForm.elements.stage.value="Assessment";
     jobForm.elements.priority.value="Normal";
   }
   jobModal.classList.add("open");
+  updateModalLock();
   jobForm.elements.customer.focus();
 }
-function closeJobModal(){jobModal.classList.remove("open");}
+function closeJobModal(){jobModal.classList.remove("open");updateModalLock();}
 
 const taskModal=document.querySelector("#taskModal");
-function openTaskModal(jobId){document.querySelector("#newTaskForm").reset();document.querySelector('#newTaskForm [name="jobId"]').value=jobId;taskModal.classList.add("open");}
-function closeTaskModal(){taskModal.classList.remove("open");}
+function openTaskModal(jobId){document.querySelector("#newTaskForm").reset();document.querySelector('#newTaskForm [name="jobId"]').value=jobId;taskModal.classList.add("open");updateModalLock();}
+function closeTaskModal(){taskModal.classList.remove("open");updateModalLock();}
 
 jobForm.onsubmit=event=>{
   event.preventDefault();
@@ -319,10 +325,10 @@ jobForm.onsubmit=event=>{
   const duplicate=jobs.some(job=>job.id!==editing?.id && job.jobNumber.toLowerCase()===jobNumber.toLowerCase());
   if (duplicate) return showToast("Job number in use","Choose a unique job number.");
   if (editing) {
-    Object.assign(editing,{customer:data.customer,address:data.address,type:data.type,manager:data.manager,stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",value:Number(data.value)||0,targetDate:data.target,jobNumber});
+    Object.assign(editing,{customer:data.customer,address:data.address,type:data.type,manager:data.manager,stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",value:Number(data.value)||0,targetDate:data.target,jobNumber});
     closeJobModal();saveJobs();renderDetail(editing.id);showToast("Job updated","Your changes were saved.");
   } else {
-    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,type:data.type,manager:data.manager,stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",value:Number(data.value)||0,targetDate:data.target,progress:5,materialStatus:"Pending",abatementStatus:"Not required",tasks:defaultTasks(data.target),notes:[],createdAt:new Date().toISOString()};
+    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,type:data.type,manager:data.manager,stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",value:Number(data.value)||0,targetDate:data.target,progress:5,materialStatus:"Pending",abatementStatus:"Not required",tasks:defaultTasks(data.target),notes:[],createdAt:new Date().toISOString()};
     jobs.unshift(job);closeJobModal();saveJobs();renderDetail(job.id);showToast("Job created","The project is ready to manage.");
   }
 };
@@ -431,6 +437,7 @@ document.addEventListener("keydown",event=>{
 });
 
 function escapeHtml(value){const div=document.createElement("div");div.textContent=String(value??"");return div.innerHTML;}
+function escapeAttribute(value){return escapeHtml(value).replace(/"/g,"&quot;");}
 
 renderOverview();
 updateJobCount();
