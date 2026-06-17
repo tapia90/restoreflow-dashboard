@@ -161,7 +161,7 @@ tbody tr:hover { background: #f9fbff; }
 .detail-tab { border: 0; background: none; color: #7d899b; font-size: 10px; padding: 11px 2px; }
 .detail-tab.active { color: var(--blue); font-weight: 700; border-bottom: 2px solid var(--blue); }
 .info-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px 25px; }
-.info-item span, .info-item strong { display: block; }.info-item span { color: #8d98a8; font-size: 9px; margin-bottom: 4px; }.info-item strong { font-size: 10px; }
+.info-item span, .info-item strong { display: block; }.info-item span { color: #8d98a8; font-size: 9px; margin-bottom: 4px; }.info-item strong { font-size: 10px; }.info-item a { color: var(--blue); font-size: 10px; font-weight: 700; text-decoration: none; }
 .task-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #edf0f4; }
 .task-row:first-of-type { border-top: 0; }.task-row input { accent-color: var(--blue); }
 .task-row strong { display: block; font-size: 10px; }.task-row span { color: #8a95a5; font-size: 9px; }.task-row time { color: #768398; font-size: 9px; }
@@ -170,9 +170,9 @@ tbody tr:hover { background: #f9fbff; }
 .timeline-item { display: grid; grid-template-columns: 8px 1fr; gap: 10px; position: relative; padding-bottom: 14px; }
 .timeline-dot { width: 8px; height: 8px; background: var(--blue); border: 2px solid #cfe0ff; border-radius: 50%; margin-top: 3px; }
 .timeline-item strong { font-size: 9px; display: block; }.timeline-item p { color: #8994a4; font-size: 8px; margin: 2px 0; }.timeline-item time { color: #a1a9b5; font-size: 8px; }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(14,24,42,.55); z-index: 50; display: none; place-items: center; padding: 20px; backdrop-filter: blur(3px); }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(14,24,42,.55); z-index: 50; display: none; place-items: center; padding: 20px; backdrop-filter: blur(3px); overflow-y: auto; }
 .modal-backdrop.open { display: grid; }
-.modal { background: white; width: min(580px, 100%); border-radius: 14px; box-shadow: 0 30px 80px rgba(8,18,36,.25); padding: 24px; animation: modalIn .18s ease; }
+.modal { background: white; width: min(580px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; border-radius: 14px; box-shadow: 0 30px 80px rgba(8,18,36,.25); padding: 24px; animation: modalIn .18s ease; }
 @keyframes modalIn { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 .modal-header { display: flex; justify-content: space-between; margin-bottom: 20px; }.modal-header h2 { font: 700 20px Manrope; margin: 3px 0 0; }
 .modal-close { border: 0; background: #f1f3f6; color: #68758a; border-radius: 50%; width: 29px; height: 29px; font-size: 18px; }
@@ -223,5 +223,8 @@ tbody tr:hover { background: #f9fbff; }
   .app-shell { display: block; }.sidebar { display: none; }.topbar { padding: 0 16px; }.mobile-menu { display: block; }.global-search { width: auto; flex: 1; margin: 0 12px; }.global-search kbd { display: none; }
   .content { padding: 22px 15px 40px; }.page-heading { align-items: flex-start; gap: 15px; }.heading-actions { display: none; }.metric-grid { grid-template-columns: 1fr 1fr; gap: 9px; }.metric-card { padding: 14px; }
   .dashboard-grid { display: block; }.dashboard-grid > .panel { margin-bottom: 12px; }.attention-banner { grid-template-columns: auto 1fr; }.attention-banner button { display: none; }.detail-layout { grid-template-columns: 1fr; }.detail-heading { gap: 12px; }.detail-actions { align-self: flex-start; }.info-grid { grid-template-columns: 1fr 1fr; }.form-grid { grid-template-columns: 1fr; }.form-grid label.full { grid-column: auto; }.workflow-strip { grid-template-columns: 1fr; }.note-form { grid-template-columns: 1fr; }
+  .modal-backdrop { align-items: start; place-items: start center; padding: 12px; -webkit-overflow-scrolling: touch; }
+  .modal { max-height: calc(100dvh - 24px); padding: 18px; }
+  .modal-actions { position: sticky; bottom: -18px; background: white; padding-bottom: 2px; }
 }
 @media (max-width: 450px) { .metric-grid { grid-template-columns: 1fr; }.topbar .btn.primary { font-size: 0; padding: 10px; }.topbar .btn.primary span { font-size: 16px; }.page-heading h1 { font-size: 22px; } }
