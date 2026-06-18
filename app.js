@@ -1,9 +1,11 @@
-const stages = ["Assessment", "Stabilizing", "Mitigation", "Abatement", "Monitoring", "Repairs", "Final"];
-const stageColors = ["#e5a03f", "#3e7bdd", "#2c9a79", "#d56b35", "#8b98aa", "#7653c8", "#3b9a58"];
-const stageMigration = {Inspection:"Assessment", Estimate:"Assessment"};
+const stages = ["Assessment", "Stabilizing", "Mitigation", "Abatement", "Monitoring", "Repairs", "Mitigation Complete"];
+const stageColors = ["#e5a03f", "#3e7bdd", "#2c9a79", "#d56b35", "#8b98aa", "#7653c8", "#c84646"];
+const stageMigration = {Inspection:"Assessment", Estimate:"Assessment", Final:"Mitigation Complete"};
 const storageKey = "restoreflow-jobs-v2";
+const todoStorageKey = "restoreflow-todos-v1";
 const legacyStorageKey = "restoreflow-jobs";
-const defaultTasks = target => [
+const todoRecordId = "__restoreflow_todos__";
+const defaultTasks = () => [
   {id:crypto.randomUUID(),title:"Initial assessment",assignee:"",due:"",done:true},
   {id:crypto.randomUUID(),title:"Work authorization signed",assignee:"",due:"",done:true},
   {id:crypto.randomUUID(),title:"Material test results reviewed",assignee:"",due:"",done:false},
@@ -11,17 +13,27 @@ const defaultTasks = target => [
   {id:crypto.randomUUID(),title:"Abatement completed if required",assignee:"",due:"",done:false},
   {id:crypto.randomUUID(),title:"Daily moisture documentation",assignee:"",due:"",done:false},
   {id:crypto.randomUUID(),title:"Remove drying equipment",assignee:"",due:"",done:false},
-  {id:crypto.randomUUID(),title:"Customer completion certificate",assignee:"",due:target || "",done:false}
+  {id:crypto.randomUUID(),title:"Customer completion certificate",assignee:"",due:"",done:false}
 ];
 const seedJobs = [];
 
 let activeJobId = null;
 let pendingDeleteId = null;
 let jobs = loadJobs();
+let todos = loadTodos();
 let cloudClient = null;
 let cloudUser = null;
 let authMode = "signin";
 let cloudReady = false;
+
+function currentTimestamp() {
+  return new Date().toISOString();
+}
+
+function touchJob(job) {
+  job.updatedAt = currentTimestamp();
+  return job;
+}
 
 function loadJobs() {
   const stored = localStorage.getItem(storageKey);
@@ -31,18 +43,34 @@ function loadJobs() {
   return seedJobs;
 }
 
+function loadTodos() {
+  return normalizeTodos(JSON.parse(localStorage.getItem(todoStorageKey) || "[]"));
+}
+
+function normalizeTodos(list) {
+  return Array.isArray(list) ? list.map(todo => ({
+    id:todo.id || crypto.randomUUID(),
+    title:todo.title || "",
+    done:Boolean(todo.done),
+    createdAt:todo.createdAt || currentTimestamp(),
+    updatedAt:todo.updatedAt || todo.createdAt || currentTimestamp()
+  })).filter(todo => todo.title.trim()) : [];
+}
+
 function normalizeJobs(list) {
   return list.map(job => {
     const targetDate = job.targetDate || parseLegacyDate(job.target);
-    const stage = stages.includes(job.stage) ? job.stage : stageMigration[job.stage] || "Final";
+    const stage = stages.includes(job.stage) ? job.stage : stageMigration[job.stage] || "Mitigation Complete";
     return {
       ...job, id:job.id || job.jobNumber, jobNumber:job.jobNumber || job.id, stage,
       targetDate, insurer:job.insurer || "Pending", priority:job.priority || "Normal",
+      projectDirector:job.projectDirector || job.manager || "",
       documentFolder:job.documentFolder || "",
       materialStatus:job.materialStatus || "Pending",
       abatementStatus:job.abatementStatus || (stage === "Abatement" ? "In progress" : "Not required"),
-      tasks:Array.isArray(job.tasks) ? job.tasks : defaultTasks(targetDate),
-      notes:Array.isArray(job.notes) ? job.notes : []
+      tasks:Array.isArray(job.tasks) ? job.tasks : defaultTasks(),
+      notes:Array.isArray(job.notes) ? job.notes : [],
+      updatedAt:job.updatedAt || job.createdAt || "1970-01-01T00:00:00.000Z"
     };
   });
 }
@@ -55,20 +83,25 @@ function parseLegacyDate(value) {
 
 async function saveJobs() {
   localStorage.setItem(storageKey, JSON.stringify(jobs));
+  localStorage.setItem(todoStorageKey, JSON.stringify(todos));
   renderOverview();
   updateJobCount();
   if (cloudReady && cloudUser) await syncJobsToCloud();
 }
 
 async function syncJobsToCloud() {
-  const records = jobs.map(job => ({id:job.id,user_id:cloudUser.id,data:job,updated_at:new Date().toISOString()}));
+  const todoUpdatedAt = todos.reduce((latest,todo) => new Date(todo.updatedAt) > new Date(latest) ? todo.updatedAt : latest, "1970-01-01T00:00:00.000Z");
+  const records = [
+    ...jobs.map(job => ({id:job.id,user_id:cloudUser.id,data:job,updated_at:job.updatedAt || currentTimestamp()})),
+    {id:todoRecordId,user_id:cloudUser.id,data:{kind:"todos",items:todos},updated_at:todoUpdatedAt}
+  ];
   if (records.length) {
     const {error} = await cloudClient.from("jobs").upsert(records,{onConflict:"user_id,id"});
     if (error) return showToast("Cloud sync failed",error.message);
   }
   const {data:remote,error:readError} = await cloudClient.from("jobs").select("id");
   if (readError) return showToast("Cloud sync failed",readError.message);
-  const localIds = new Set(jobs.map(job=>job.id));
+  const localIds = new Set([...jobs.map(job=>job.id), todoRecordId]);
   const stale = remote.filter(row=>!localIds.has(row.id)).map(row=>row.id);
   if (stale.length) await cloudClient.from("jobs").delete().in("id",stale);
   setSyncLabel("Saved to cloud");
@@ -79,12 +112,35 @@ function setSyncLabel(text) {
   if (email && cloudUser) email.textContent = `${cloudUser.email} · ${text}`;
 }
 
+function mergeJobs(localJobs, remoteJobs) {
+  const merged = new Map();
+  [...localJobs, ...remoteJobs].forEach(job => {
+    const existing = merged.get(job.id);
+    if (!existing || new Date(job.updatedAt) >= new Date(existing.updatedAt)) merged.set(job.id, job);
+  });
+  return [...merged.values()].sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+function mergeTodos(localTodos, remoteTodos) {
+  const merged = new Map();
+  [...localTodos, ...remoteTodos].forEach(todo => {
+    const existing = merged.get(todo.id);
+    if (!existing || new Date(todo.updatedAt) >= new Date(existing.updatedAt)) merged.set(todo.id, todo);
+  });
+  return [...merged.values()].sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
 async function loadCloudJobs() {
   const {data,error} = await cloudClient.from("jobs").select("data").order("updated_at",{ascending:false});
   if (error) throw error;
   if (data.length) {
-    jobs = normalizeJobs(data.map(row=>row.data));
+    const remoteTodos = data.find(row => row.data?.kind === "todos")?.data?.items || [];
+    const remoteJobs = data.map(row=>row.data).filter(item => item && item.kind !== "todos");
+    jobs = mergeJobs(normalizeJobs(jobs), normalizeJobs(remoteJobs));
+    todos = mergeTodos(normalizeTodos(todos), normalizeTodos(remoteTodos));
     localStorage.setItem(storageKey,JSON.stringify(jobs));
+    localStorage.setItem(todoStorageKey,JSON.stringify(todos));
+    await syncJobsToCloud();
   } else {
     await syncJobsToCloud();
   }
@@ -97,7 +153,7 @@ const typeSymbol = type => ({Water:"W",Fire:"F",Mold:"M",Reconstruction:"R"}[typ
 const money = value => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(value)||0);
 const slug = text => String(text || "").toLowerCase().replace(/\s/g,"");
 const formatDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString("en-US",{month:"short",day:"numeric",year:new Date(value).getFullYear() !== new Date().getFullYear() ? "numeric":undefined}) : "Not set";
-const isLate = job => job.targetDate && job.stage !== "Final" && new Date(`${job.targetDate}T23:59:59`) < new Date();
+const isLate = () => false;
 const completedCount = job => job.tasks.filter(task => task.done).length;
 
 function showToast(title,message) {
@@ -113,43 +169,36 @@ function updateJobCount() {
   document.querySelector(".nav-count").textContent = jobs.length;
 }
 
-function jobRow(job,includeValue=false) {
+function jobRow(job,showMenu=false) {
   return `<tr data-job="${job.id}">
-    <td><div class="job-cell"><span class="job-type-icon ${slug(job.type)}">${typeSymbol(job.type)}</span><div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(job.customer)}</strong><span>${escapeHtml(job.address)}</span></div></div></td>
+    <td><div class="job-cell"><span class="job-type-icon ${slug(job.type)}">${typeSymbol(job.type)}</span><div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(job.address)}</strong><span>${escapeHtml(job.customer)}</span></div></div></td>
     <td>${escapeHtml(job.type)}</td><td><span class="status ${slug(job.stage)}">${escapeHtml(job.stage)}</span></td>
-    <td><div class="manager-cell"><span class="mini-avatar">${initials(job.manager)}</span>${escapeHtml(job.manager)}</div></td>
-    ${includeValue?`<td><strong>${money(job.value)}</strong></td>`:""}
+    <td><div class="manager-cell"><span class="mini-avatar">${initials(job.projectDirector)}</span>${escapeHtml(job.projectDirector || "Not assigned")}</div></td>
     <td><div class="progress-cell"><div class="mini-progress"><span style="width:${job.progress}%"></span></div>${job.progress}%</div></td>
-    <td class="${isLate(job)?"late-date":""}">${formatDate(job.targetDate)}${isLate(job)?" · Late":""}</td>
-    ${includeValue?"":`<td class="kebab">•••</td>`}
+    ${showMenu?`<td class="kebab">•••</td>`:""}
   </tr>`;
 }
 
 function renderOverview() {
   const openTasks = jobs.reduce((sum,job) => sum + job.tasks.filter(task => !task.done).length,0);
-  const lateJobs = jobs.filter(isLate);
-  const activeValue = jobs.reduce((sum,job) => sum + Number(job.value || 0),0);
+  const openTodos = todos.filter(todo => !todo.done).length;
   const metrics = document.querySelectorAll(".metric-card");
   metrics[0].querySelector("h2").textContent = jobs.length;
   metrics[0].querySelector("small").textContent = `Across ${stages.length} project stages`;
   metrics[1].querySelector("h2").textContent = openTasks;
-  metrics[1].querySelector(".trend").textContent = `${lateJobs.length} overdue`;
-  metrics[2].querySelector("h2").textContent = activeValue >= 1000 ? `$${(activeValue/1000).toFixed(1)}k` : money(activeValue);
-  document.querySelector(".attention-banner strong").textContent = `${lateJobs.length} jobs need attention`;
-  document.querySelector(".attention-banner span").textContent = lateJobs.length ? `${lateJobs.length} project${lateJobs.length===1?" is":"s are"} past the target date.` : "No projects are currently past their target date.";
+  metrics[1].querySelector(".trend").textContent = `${openTasks} open`;
+  metrics[2].querySelector("h2").textContent = openTodos;
+  metrics[2].querySelector("small").textContent = "Billing questions and follow-ups";
+  document.querySelector(".attention-banner strong").textContent = `${openTodos} to-dos to complete`;
+  document.querySelector(".attention-banner span").textContent = openTodos ? "Billing or office follow-ups need your attention." : "No billing follow-ups are currently open.";
 
   const counts = stages.map(stage => jobs.filter(job => job.stage === stage).length);
   document.querySelector("#pipelineChart").innerHTML = stages.map((stage,i) =>
     `<div class="chart-row"><span>${stage}</span><div class="chart-track"><div class="chart-bar" style="width:${Math.max(counts[i]*28,7)}%;background:${stageColors[i]}"></div></div><strong>${counts[i]}</strong></div>`
   ).join("");
 
-  const priorities = jobs.flatMap(job => job.tasks.filter(task => !task.done).map(task => ({job,task}))).slice(0,5);
-  document.querySelector(".priorities-panel .pill").textContent = `${priorities.length} tasks`;
-  document.querySelector("#priorityList").innerHTML = priorities.length ? priorities.map(({job,task}) => {
-    const overdue = task.due && new Date(`${task.due}T23:59:59`) < new Date();
-    return `<div class="priority-item"><span class="priority-marker ${overdue?"overdue":job.priority==="High"?"warning":""}"></span><div><strong>${escapeHtml(task.title)}</strong><p>${escapeHtml(job.jobNumber)} · ${escapeHtml(job.customer)}</p></div><time class="${overdue?"overdue":""}">${task.due?formatDate(task.due):"Open"}</time></div>`;
-  }).join("") : `<div class="empty-state">No open tasks. Nice work.</div>`;
-  document.querySelector("#activeJobsTable").innerHTML = jobs.slice(0,5).map(job => jobRow(job)).join("");
+  renderTodos();
+  document.querySelector("#activeJobsTable").innerHTML = jobs.slice(0,5).map(job => jobRow(job,true)).join("");
   bindJobRows();
 }
 
@@ -159,8 +208,8 @@ function renderPipeline() {
     return `<section class="kanban-column"><div class="kanban-header"><strong><span style="color:${stageColors[i]}">●</span> ${stage}</strong><span>${stageJobs.length}</span></div>
       ${stageJobs.map(job => `<article class="job-card" data-job="${job.id}">
         <div class="job-card-top"><span class="status ${slug(job.type)}">${job.type}</span><span class="priority-label ${slug(job.priority)}">${job.priority}</span></div>
-        <h4>${escapeHtml(job.customer)}</h4><p>${escapeHtml(job.jobNumber)}<br>${escapeHtml(job.address)}</p>
-        <div class="job-card-footer"><span class="mini-avatar">${initials(job.manager)}</span><time class="${isLate(job)?"late-date":""}">${formatDate(job.targetDate)}</time></div>
+        <h4>${escapeHtml(job.jobNumber)}</h4><p>${escapeHtml(job.address)}<br>${escapeHtml(job.customer)}</p>
+        <div class="job-card-footer"><span class="mini-avatar">${initials(job.projectDirector)}</span><span>${escapeHtml(job.projectDirector || "Not assigned")}</span></div>
       </article>`).join("") || `<div class="empty-column">No jobs</div>`}
     </section>`;
   }).join("");
@@ -171,8 +220,8 @@ function renderJobs() {
   const query = (document.querySelector("#jobSearch")?.value || "").toLowerCase();
   const stage = document.querySelector("#stageFilter")?.value || "";
   const type = document.querySelector("#typeFilter")?.value || "";
-  const filtered = jobs.filter(job => (!query || `${job.jobNumber} ${job.customer} ${job.address} ${job.manager}`.toLowerCase().includes(query)) && (!stage || job.stage===stage) && (!type || job.type===type));
-  document.querySelector("#allJobsTable").innerHTML = filtered.map(job => jobRow(job,true)).join("") || `<tr><td colspan="7" class="empty-state">No matching jobs found.</td></tr>`;
+  const filtered = jobs.filter(job => (!query || `${job.jobNumber} ${job.customer} ${job.address} ${job.projectDirector}`.toLowerCase().includes(query)) && (!stage || job.stage===stage) && (!type || job.type===type));
+  document.querySelector("#allJobsTable").innerHTML = filtered.map(job => jobRow(job)).join("") || `<tr><td colspan="5" class="empty-state">No matching jobs found.</td></tr>`;
   bindJobRows();
 }
 
@@ -198,7 +247,7 @@ function renderDetail(id) {
           <div class="panel-header"><div><h3>Job information</h3><p>Key project details</p></div></div>
           <div class="info-grid">
             <div class="info-item"><span>Job number</span><strong>${escapeHtml(job.jobNumber)}</strong></div><div class="info-item"><span>Insurance carrier</span><strong>${escapeHtml(job.insurer)}</strong></div><div class="info-item"><span>Loss type</span><strong>${escapeHtml(job.type)}</strong></div>
-            <div class="info-item"><span>Project manager</span><strong>${escapeHtml(job.manager)}</strong></div><div class="info-item"><span>Target completion</span><strong class="${isLate(job)?"late-date":""}">${formatDate(job.targetDate)}</strong></div><div class="info-item"><span>Priority</span><strong>${escapeHtml(job.priority)}</strong></div>
+            <div class="info-item"><span>Project director</span><strong>${escapeHtml(job.projectDirector || "Not assigned")}</strong></div><div class="info-item"><span>Priority</span><strong>${escapeHtml(job.priority)}</strong></div>
             <div class="info-item"><span>Documents</span>${job.documentFolder?`<a href="${escapeAttribute(job.documentFolder)}" target="_blank" rel="noopener">Open document folder</a>`:`<strong>Not added</strong>`}</div>
           </div>
         </article>
@@ -206,8 +255,8 @@ function renderDetail(id) {
           <div class="panel-header"><div><h3>Project checklist</h3><p>${done} of ${job.tasks.length} completed</p></div><button class="text-btn" id="addTaskBtn">＋ Add task</button></div>
           <div id="taskList">${job.tasks.map(task => `<div class="task-row ${task.done?"done":""}" data-task="${task.id}">
             <input type="checkbox" ${task.done?"checked":""} aria-label="Complete ${escapeHtml(task.title)}">
-            <div><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.assignee)}</span></div>
-            <time>${task.due?formatDate(task.due):"No due date"}</time><button class="task-delete" aria-label="Delete task">×</button>
+            <div><strong>${escapeHtml(task.title)}</strong></div>
+            <button class="task-delete" aria-label="Delete task">×</button>
           </div>`).join("") || `<div class="empty-state">No tasks yet.</div>`}</div>
         </article>
         <article class="panel">
@@ -225,7 +274,7 @@ function renderDetail(id) {
         </article>
         <article class="panel"><div class="panel-header"><div><h3>Job health</h3><p>Current project snapshot</p></div></div>
           <div class="side-stat"><span>Progress</span><strong>${job.progress}%</strong></div><div class="mini-progress health-progress"><span style="width:${job.progress}%"></span></div>
-          <div class="side-stat"><span>Contract value</span><strong>${money(job.value)}</strong></div><div class="side-stat"><span>Open tasks</span><strong>${open}</strong></div>
+          <div class="side-stat"><span>Open tasks</span><strong>${open}</strong></div>
           <div class="side-stat"><span>Material testing</span><strong class="${job.materialStatus==="Hot"?"hot-status":""}">${job.materialStatus}</strong></div><div class="side-stat"><span>Abatement</span><strong>${job.abatementStatus}</strong></div>
         </article>
       </aside>
@@ -239,16 +288,18 @@ function renderDetail(id) {
 function bindDetailActions(job) {
   const progress = document.querySelector("#detailProgress");
   progress.addEventListener("input",()=>document.querySelector("#progressValue").textContent=`${progress.value}%`);
-  document.querySelector("#saveWorkflowBtn").onclick = () => {
+  document.querySelector("#saveWorkflowBtn").onclick = async () => {
     job.stage = document.querySelector("#detailStage").value;
     job.progress = Number(progress.value);
-    saveJobs(); renderDetail(job.id); showToast("Workflow saved","Stage and progress were updated.");
+    touchJob(job);
+    await saveJobs(); renderDetail(job.id); showToast("Workflow saved","Stage and progress were updated.");
   };
-  document.querySelector("#saveSafetyBtn").onclick = () => {
+  document.querySelector("#saveSafetyBtn").onclick = async () => {
     job.materialStatus = document.querySelector("#materialStatus").value;
     job.abatementStatus = document.querySelector("#abatementStatus").value;
     if (job.materialStatus==="Hot" && job.abatementStatus!=="Completed") job.stage="Abatement";
-    saveJobs(); renderDetail(job.id); showToast("Safety status saved","Testing and abatement were updated.");
+    touchJob(job);
+    await saveJobs(); renderDetail(job.id); showToast("Safety status saved","Testing and abatement were updated.");
   };
   document.querySelector('[data-action="edit-job"]').onclick=()=>openJobModal(job);
   document.querySelector('[data-action="delete-job"]').onclick=()=>openDeleteConfirm(job.id);
@@ -256,23 +307,60 @@ function bindDetailActions(job) {
   document.querySelectorAll("[data-task]").forEach(row => {
     row.querySelector('input[type="checkbox"]').onchange = event => {
       const task = job.tasks.find(item=>item.id===row.dataset.task);
-      task.done=event.target.checked; saveJobs(); renderDetail(job.id);
+      task.done=event.target.checked; touchJob(job); saveJobs(); renderDetail(job.id);
     };
     row.querySelector(".task-delete").onclick = () => {
-      job.tasks=job.tasks.filter(item=>item.id!==row.dataset.task); saveJobs(); renderDetail(job.id); showToast("Task removed","The checklist was updated.");
+      job.tasks=job.tasks.filter(item=>item.id!==row.dataset.task); touchJob(job); saveJobs(); renderDetail(job.id); showToast("Task removed","The checklist was updated.");
     };
   });
   document.querySelector("#noteForm").onsubmit = event => {
     event.preventDefault();
     const text=document.querySelector("#noteText").value.trim();
     if (!text) return;
-    job.notes.push({id:crypto.randomUUID(),text,createdAt:new Date().toISOString()});
-    saveJobs(); renderDetail(job.id); showToast("Note added","The update was saved to this job.");
+    job.notes.push({id:crypto.randomUUID(),text,createdAt:currentTimestamp()});
+    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Note added","The update was saved to this job.");
   };
 }
 
 function bindJobRows() {
   document.querySelectorAll("[data-job]").forEach(row=>row.onclick=()=>renderDetail(row.dataset.job));
+}
+
+function renderTodos() {
+  const openTodos = todos.filter(todo => !todo.done);
+  document.querySelector(".priorities-panel .pill").textContent = `${openTodos.length} open`;
+  document.querySelector("#priorityList").innerHTML = `
+    <form class="todo-form" id="todoForm">
+      <input id="todoInput" placeholder="Add billing question or follow-up..." required>
+      <button class="btn primary small">Add</button>
+    </form>
+    <div class="todo-list">${todos.length ? todos.map(todo => `<div class="todo-item ${todo.done?"done":""}" data-todo="${todo.id}">
+      <input type="checkbox" ${todo.done?"checked":""} aria-label="Complete ${escapeHtml(todo.title)}">
+      <span>${escapeHtml(todo.title)}</span>
+      <button class="todo-delete" aria-label="Delete to-do">×</button>
+    </div>`).join("") : `<div class="empty-state">No to-dos yet. Add billing questions or follow-ups here.</div>`}</div>
+  `;
+  document.querySelector("#todoForm").onsubmit = event => {
+    event.preventDefault();
+    const input = document.querySelector("#todoInput");
+    const title = input.value.trim();
+    if (!title) return;
+    todos.unshift({id:crypto.randomUUID(),title,done:false,createdAt:currentTimestamp(),updatedAt:currentTimestamp()});
+    input.value = "";
+    saveJobs(); showToast("To-do added","Your follow-up was added.");
+  };
+  document.querySelectorAll("[data-todo]").forEach(row => {
+    const todo = todos.find(item => item.id === row.dataset.todo);
+    row.querySelector('input[type="checkbox"]').onchange = event => {
+      todo.done = event.target.checked;
+      todo.updatedAt = currentTimestamp();
+      saveJobs();
+    };
+    row.querySelector(".todo-delete").onclick = () => {
+      todos = todos.filter(item => item.id !== row.dataset.todo);
+      saveJobs(); showToast("To-do removed","Your follow-up list was updated.");
+    };
+  });
 }
 
 function showView(name) {
@@ -299,8 +387,7 @@ function openJobModal(job=null) {
   document.querySelector("#jobModalTitle").textContent=job?"Edit job":"Create a job";
   document.querySelector("#jobSubmitBtn").textContent=job?"Save changes":"Create job";
   if (job) {
-    ["customer","type","address","jobNumber","manager","stage","priority","insurer","documentFolder","value"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
-    jobForm.elements.target.value=job.targetDate || "";
+    ["customer","type","address","jobNumber","projectDirector","stage","priority","insurer","documentFolder"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
   } else {
     jobForm.elements.stage.value="Assessment";
     jobForm.elements.priority.value="Normal";
@@ -325,10 +412,12 @@ jobForm.onsubmit=event=>{
   const duplicate=jobs.some(job=>job.id!==editing?.id && job.jobNumber.toLowerCase()===jobNumber.toLowerCase());
   if (duplicate) return showToast("Job number in use","Choose a unique job number.");
   if (editing) {
-    Object.assign(editing,{customer:data.customer,address:data.address,type:data.type,manager:data.manager,stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",value:Number(data.value)||0,targetDate:data.target,jobNumber});
+    Object.assign(editing,{customer:data.customer,address:data.address,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",jobNumber});
+    touchJob(editing);
     closeJobModal();saveJobs();renderDetail(editing.id);showToast("Job updated","Your changes were saved.");
   } else {
-    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,type:data.type,manager:data.manager,stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",value:Number(data.value)||0,targetDate:data.target,progress:5,materialStatus:"Pending",abatementStatus:"Not required",tasks:defaultTasks(data.target),notes:[],createdAt:new Date().toISOString()};
+    const createdAt=currentTimestamp();
+    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
     jobs.unshift(job);closeJobModal();saveJobs();renderDetail(job.id);showToast("Job created","The project is ready to manage.");
   }
 };
@@ -339,6 +428,7 @@ document.querySelector("#newTaskForm").onsubmit=event=>{
   const job=jobs.find(item=>item.id===data.jobId);
   if (!job) return;
   job.tasks.push({id:crypto.randomUUID(),title:data.title,assignee:"",due:"",done:false});
+  touchJob(job);
   closeTaskModal();saveJobs();renderDetail(job.id);showToast("Task added","The checklist was updated.");
 };
 

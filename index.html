@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260617">
+  <link rel="stylesheet" href="styles.css?v=20260617c">
 </head>
 <body>
   <div class="auth-screen" id="authScreen">
@@ -96,7 +96,7 @@
 
           <div class="attention-banner">
             <div class="attention-icon">!</div>
-            <div><strong>4 items need attention</strong><span>Two jobs are past their target date and two documents are awaiting approval.</span></div>
+            <div><strong>0 to-dos to complete</strong><span>No billing follow-ups are currently open.</span></div>
             <button data-view-target="jobs">Review items →</button>
           </div>
 
@@ -110,12 +110,8 @@
               <p>Open tasks</p><h2>38</h2><small>11 due this week</small>
             </article>
             <article class="metric-card">
-              <div class="metric-top"><span class="metric-icon green">$</span><span class="trend positive">↗ 12.4%</span></div>
-              <p>Active contract value</p><h2>$284.5k</h2><small>$76.2k pending approval</small>
-            </article>
-            <article class="metric-card">
-              <div class="metric-top"><span class="metric-icon purple">✓</span><span class="trend neutral">86% on time</span></div>
-              <p>Jobs closed this month</p><h2>7</h2><small>Avg. cycle time: 18 days</small>
+              <div class="metric-top"><span class="metric-icon green">✓</span><span class="trend neutral">Focus</span></div>
+              <p>To-dos to complete</p><h2>0</h2><small>Billing questions and follow-ups</small>
             </article>
           </div>
 
@@ -129,7 +125,7 @@
             </article>
 
             <article class="panel priorities-panel">
-              <div class="panel-header"><div><h3>Today’s priorities</h3><p>Tasks requiring action</p></div><span class="pill">5 tasks</span></div>
+              <div class="panel-header"><div><h3>To-dos to complete</h3><p>Billing questions and answers to follow up on</p></div><span class="pill">0 open</span></div>
               <div id="priorityList"></div>
             </article>
           </div>
@@ -144,7 +140,7 @@
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Job / Customer</th><th>Loss type</th><th>Stage</th><th>Project manager</th><th>Progress</th><th>Target date</th><th></th></tr></thead>
+                <thead><tr><th>Job / Address</th><th>Loss type</th><th>Stage</th><th>Project director</th><th>Progress</th><th></th></tr></thead>
                 <tbody id="activeJobsTable"></tbody>
               </table>
             </div>
@@ -172,7 +168,7 @@
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Job / Customer</th><th>Loss type</th><th>Stage</th><th>Project manager</th><th>Value</th><th>Progress</th><th>Target date</th></tr></thead>
+                <thead><tr><th>Job / Address</th><th>Loss type</th><th>Stage</th><th>Project director</th><th>Progress</th></tr></thead>
                 <tbody id="allJobsTable"></tbody>
               </table>
             </div>
@@ -205,13 +201,11 @@
           <label>Loss type<select name="type"><option>Water</option><option>Fire</option><option>Mold</option><option>Reconstruction</option></select></label>
           <label class="full">Property address<input name="address" required placeholder="Street, city, state ZIP"></label>
           <label>Job number<input name="jobNumber" placeholder="Auto-generated if blank"></label>
-          <label>Project manager<input name="manager" placeholder="Enter project manager"></label>
-          <label>Current stage<select name="stage"><option>Assessment</option><option>Stabilizing</option><option>Mitigation</option><option>Abatement</option><option>Monitoring</option><option>Repairs</option><option>Final</option></select></label>
+          <label>Project director<input name="projectDirector" placeholder="Enter project director"></label>
+          <label>Current stage<select name="stage"><option>Assessment</option><option>Stabilizing</option><option>Mitigation</option><option>Abatement</option><option>Monitoring</option><option>Repairs</option><option>Mitigation Complete</option></select></label>
           <label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Urgent</option></select></label>
           <label>Insurance carrier<input name="insurer" placeholder="Carrier or self-pay"></label>
           <label class="full">Document folder link<input name="documentFolder" type="url" placeholder="Paste Google Drive, OneDrive, Dropbox, or job folder link"></label>
-          <label>Estimated value<input name="value" type="number" min="0" placeholder="0"></label>
-          <label>Target completion<input name="target" type="date" required></label>
         </div>
         <div class="modal-actions"><button type="button" class="btn secondary modal-cancel">Cancel</button><button type="submit" class="btn primary" id="jobSubmitBtn">Create job</button></div>
       </form>
@@ -240,6 +234,6 @@
   <div class="toast" id="toast"><span>✓</span><div><strong id="toastTitle">Saved</strong><p id="toastMessage">Your changes were saved.</p></div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=20260615"></script>
-  <script src="app.js?v=20260617"></script>
+  <script src="app.js?v=20260617c"></script>
 </body>
 </html>

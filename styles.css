@@ -76,7 +76,7 @@ kbd { background: #f2f4f7; border: 1px solid #e2e6ec; border-radius: 5px; color:
 .attention-banner strong { font-size: 12px; }
 .attention-banner span { color: #7f6f65; font-size: 10px; margin-top: 2px; }
 .attention-banner button { border: 0; background: none; color: #a9511f; font-size: 11px; font-weight: 700; }
-.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
 .metric-card, .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow); }
 .metric-card { padding: 17px 18px; }
 .metric-top { display: flex; justify-content: space-between; align-items: center; }
@@ -122,9 +122,9 @@ tbody tr:hover { background: #f9fbff; }
 .job-cell strong, .job-cell span { display: block; }
 .job-cell strong { color: #243049; font-size: 10px; }.job-cell span { font-size: 9px; color: #929cab; margin-top: 2px; }
 .status { display: inline-block; border-radius: 10px; font-size: 8px; font-weight: 700; padding: 4px 8px; white-space: nowrap; }
-.status.inspection { background: #fff2dd; color: #a86618; }.status.mitigation { background: #eaf3ff; color: #2f69bf; }
-.status.monitoring { background: #ebf8f5; color: #25775e; }.status.repairs { background: #f0edff; color: #654bb0; }
-.status.estimate { background: #f1f3f6; color: #59677a; }.status.final { background: #e9f7ed; color: #307a47; }.status.abatement { background: #fff0e7; color: #a95725; }
+.status.assessment { background: #fff2dd; color: #a86618; }.status.stabilizing { background: #eaf3ff; color: #2f69bf; }.status.mitigation { background: #e8f6f1; color: #25775e; }
+.status.monitoring { background: #f1f3f6; color: #59677a; }.status.repairs { background: #f0edff; color: #654bb0; }
+.status.mitigationcomplete { background: #ffecec; color: var(--red); }.status.final { background: #ffecec; color: var(--red); }.status.abatement { background: #fff0e7; color: #a95725; }
 .manager-cell { display: flex; align-items: center; gap: 7px; }
 .mini-avatar { width: 23px; height: 23px; border-radius: 50%; background: #e7edf7; display: grid; place-items: center; font-size: 8px; font-weight: 700; color: #52647f; }
 .progress-cell { display: flex; align-items: center; gap: 8px; }
@@ -163,7 +163,7 @@ tbody tr:hover { background: #f9fbff; }
 .detail-tab.active { color: var(--blue); font-weight: 700; border-bottom: 2px solid var(--blue); }
 .info-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px 25px; }
 .info-item span, .info-item strong { display: block; }.info-item span { color: #8d98a8; font-size: 9px; margin-bottom: 4px; }.info-item strong { font-size: 10px; }.info-item a { color: var(--blue); font-size: 10px; font-weight: 700; text-decoration: none; }
-.task-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #edf0f4; }
+.task-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #edf0f4; }
 .task-row:first-of-type { border-top: 0; }.task-row input { accent-color: var(--blue); }
 .task-row strong { display: block; font-size: 10px; }.task-row span { color: #8a95a5; font-size: 9px; }.task-row time { color: #768398; font-size: 9px; }
 .task-row.done strong { text-decoration: line-through; color: #8b96a6; }
@@ -205,6 +205,14 @@ tbody tr:hover { background: #f9fbff; }
 .health-progress { width: 100%; height: 7px; margin: 4px 0 12px; }
 .hot-status { color: var(--red); }.priority-label { font-size: 8px; color: #7c8798; }.priority-label.high, .priority-label.urgent { color: var(--red); font-weight: 700; }
 .task-delete { border: 0; background: transparent; color: #a0a9b6; font-size: 17px; }.task-delete:hover { color: var(--red); }
+.todo-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 10px; }
+.todo-form input { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 10px; outline: none; }
+.todo-form input:focus { border-color: #7fa4ec; box-shadow: 0 0 0 3px #edf3ff; }
+.todo-list { display: grid; gap: 2px; }
+.todo-item { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; padding: 9px 0; border-top: 1px solid #edf0f4; }
+.todo-item span { font-size: 10px; color: #27344a; }
+.todo-item.done span { color: #8b96a6; text-decoration: line-through; }
+.todo-delete { border: 0; background: transparent; color: #a0a9b6; font-size: 16px; }.todo-delete:hover { color: var(--red); }
 .note-form { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
 .note-form textarea { min-height: 72px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: inherit; font-size: 11px; outline: none; }
 .note-form textarea:focus { border-color: #7fa4ec; box-shadow: 0 0 0 3px #edf3ff; }
