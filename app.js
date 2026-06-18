@@ -68,6 +68,7 @@ function normalizeJobs(list) {
       documentFolder:job.documentFolder || "",
       materialStatus:job.materialStatus || "Pending",
       abatementStatus:job.abatementStatus || (stage === "Abatement" ? "In progress" : "Not required"),
+      equipmentLogs:Array.isArray(job.equipmentLogs) ? job.equipmentLogs : [],
       tasks:Array.isArray(job.tasks) ? job.tasks : defaultTasks(),
       notes:Array.isArray(job.notes) ? job.notes : [],
       updatedAt:job.updatedAt || job.createdAt || "1970-01-01T00:00:00.000Z"
@@ -155,6 +156,8 @@ const slug = text => String(text || "").toLowerCase().replace(/\s/g,"");
 const formatDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString("en-US",{month:"short",day:"numeric",year:new Date(value).getFullYear() !== new Date().getFullYear() ? "numeric":undefined}) : "Not set";
 const isLate = () => false;
 const completedCount = job => job.tasks.filter(task => task.done).length;
+const latestEquipmentLog = job => [...(job.equipmentLogs || [])].sort((a,b) => new Date(`${b.date}T12:00:00`) - new Date(`${a.date}T12:00:00`) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0];
+const equipmentTotal = log => ["dehumidifiers","airMovers","axials","negativeAir"].reduce((sum,key) => sum + (Number(log?.[key]) || 0),0);
 
 function showToast(title,message) {
   document.querySelector("#toastTitle").textContent = title;
@@ -260,6 +263,21 @@ function renderDetail(id) {
           </div>`).join("") || `<div class="empty-state">No tasks yet.</div>`}</div>
         </article>
         <article class="panel">
+          <div class="panel-header"><div><h3>Equipment tracker</h3><p>Daily count of equipment left on site</p></div></div>
+          ${equipmentSummary(job)}
+          <form class="equipment-form" id="equipmentForm">
+            <label>Date<input name="date" type="date" required value="${new Date().toISOString().slice(0,10)}"></label>
+            <label>Technician<input name="technician" placeholder="Who counted equipment?"></label>
+            <label>Dehumidifiers<input name="dehumidifiers" type="number" min="0" value="0"></label>
+            <label>Air movers<input name="airMovers" type="number" min="0" value="0"></label>
+            <label>Axials<input name="axials" type="number" min="0" value="0"></label>
+            <label>Negative air<input name="negativeAir" type="number" min="0" value="0"></label>
+            <label class="full">Notes<input name="notes" placeholder="Missing unit, picked up, added equipment, etc."></label>
+            <button class="btn primary full">Save daily equipment count</button>
+          </form>
+          <div class="equipment-log-list">${renderEquipmentLogs(job)}</div>
+        </article>
+        <article class="panel">
           <div class="panel-header"><div><h3>Job notes</h3><p>Updates are saved with the project</p></div></div>
           <form class="note-form" id="noteForm"><textarea id="noteText" required placeholder="Add a field update, customer call, or project note..."></textarea><button class="btn primary">Add note</button></form>
           <div class="notes-list">${job.notes.length ? [...job.notes].reverse().map(note=>`<div class="note-item"><p>${escapeHtml(note.text)}</p><span>${new Date(note.createdAt).toLocaleString()}</span></div>`).join("") : `<div class="empty-state">No notes have been added.</div>`}</div>
@@ -275,6 +293,7 @@ function renderDetail(id) {
         <article class="panel"><div class="panel-header"><div><h3>Job health</h3><p>Current project snapshot</p></div></div>
           <div class="side-stat"><span>Progress</span><strong>${job.progress}%</strong></div><div class="mini-progress health-progress"><span style="width:${job.progress}%"></span></div>
           <div class="side-stat"><span>Open tasks</span><strong>${open}</strong></div>
+          <div class="side-stat"><span>Equipment on site</span><strong>${equipmentTotal(latestEquipmentLog(job))}</strong></div>
           <div class="side-stat"><span>Material testing</span><strong class="${job.materialStatus==="Hot"?"hot-status":""}">${job.materialStatus}</strong></div><div class="side-stat"><span>Abatement</span><strong>${job.abatementStatus}</strong></div>
         </article>
       </aside>
@@ -320,6 +339,44 @@ function bindDetailActions(job) {
     job.notes.push({id:crypto.randomUUID(),text,createdAt:currentTimestamp()});
     touchJob(job); saveJobs(); renderDetail(job.id); showToast("Note added","The update was saved to this job.");
   };
+  document.querySelector("#equipmentForm").onsubmit = event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.target));
+    job.equipmentLogs = job.equipmentLogs || [];
+    job.equipmentLogs.unshift({
+      id:crypto.randomUUID(),
+      date:data.date,
+      technician:data.technician || "",
+      dehumidifiers:Number(data.dehumidifiers) || 0,
+      airMovers:Number(data.airMovers) || 0,
+      axials:Number(data.axials) || 0,
+      negativeAir:Number(data.negativeAir) || 0,
+      notes:data.notes || "",
+      createdAt:currentTimestamp()
+    });
+    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Equipment count saved","The daily equipment count was saved.");
+  };
+}
+
+function equipmentSummary(job) {
+  const latest = latestEquipmentLog(job);
+  if (!latest) return `<div class="equipment-summary empty">No equipment count has been recorded for this job yet.</div>`;
+  return `<div class="equipment-summary">
+    <div><span>Last count</span><strong>${formatDate(latest.date)}</strong></div>
+    <div><span>Dehus</span><strong>${Number(latest.dehumidifiers)||0}</strong></div>
+    <div><span>Air movers</span><strong>${Number(latest.airMovers)||0}</strong></div>
+    <div><span>Axials</span><strong>${Number(latest.axials)||0}</strong></div>
+    <div><span>Negative air</span><strong>${Number(latest.negativeAir)||0}</strong></div>
+  </div>`;
+}
+
+function renderEquipmentLogs(job) {
+  const logs = [...(job.equipmentLogs || [])].sort((a,b) => new Date(`${b.date}T12:00:00`) - new Date(`${a.date}T12:00:00`) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  return logs.length ? logs.map(log => `<div class="equipment-log-item">
+    <div><strong>${formatDate(log.date)}</strong><span>${escapeHtml(log.technician || "Technician not listed")}</span></div>
+    <div class="equipment-counts"><span>DH ${Number(log.dehumidifiers)||0}</span><span>AM ${Number(log.airMovers)||0}</span><span>AX ${Number(log.axials)||0}</span><span>NA ${Number(log.negativeAir)||0}</span></div>
+    ${log.notes?`<p>${escapeHtml(log.notes)}</p>`:""}
+  </div>`).join("") : `<div class="empty-state">No equipment history yet.</div>`;
 }
 
 function bindJobRows() {
@@ -417,7 +474,7 @@ jobForm.onsubmit=event=>{
     closeJobModal();saveJobs();renderDetail(editing.id);showToast("Job updated","Your changes were saved.");
   } else {
     const createdAt=currentTimestamp();
-    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
+    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",equipmentLogs:[],tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
     jobs.unshift(job);closeJobModal();saveJobs();renderDetail(job.id);showToast("Job created","The project is ready to manage.");
   }
 };
