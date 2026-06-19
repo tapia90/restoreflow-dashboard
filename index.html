@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260617d">
+  <link rel="stylesheet" href="styles.css?v=20260618a">
 </head>
 <body>
   <div class="auth-screen" id="authScreen">
@@ -201,6 +201,7 @@
           <label>Loss type<select name="type"><option>Water</option><option>Fire</option><option>Mold</option><option>Reconstruction</option></select></label>
           <label class="full">Property address<input name="address" required placeholder="Street, city, state ZIP"></label>
           <label>Job number<input name="jobNumber" placeholder="Auto-generated if blank"></label>
+          <label>Unit / suite / office<input name="unitSuite" placeholder="Unit 204, Suite B, Office 3"></label>
           <label>Project director<input name="projectDirector" placeholder="Enter project director"></label>
           <label>Current stage<select name="stage"><option>Assessment</option><option>Stabilizing</option><option>Mitigation</option><option>Abatement</option><option>Monitoring</option><option>Repairs</option><option>Mitigation Complete</option></select></label>
           <label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Urgent</option></select></label>
@@ -234,6 +235,6 @@
   <div class="toast" id="toast"><span>✓</span><div><strong id="toastTitle">Saved</strong><p id="toastMessage">Your changes were saved.</p></div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=20260615"></script>
-  <script src="app.js?v=20260617d"></script>
+  <script src="app.js?v=20260618a"></script>
 </body>
 </html>

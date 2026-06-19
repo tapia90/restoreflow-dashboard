@@ -5,6 +5,7 @@ const storageKey = "restoreflow-jobs-v2";
 const todoStorageKey = "restoreflow-todos-v1";
 const legacyStorageKey = "restoreflow-jobs";
 const todoRecordId = "__restoreflow_todos__";
+const equipmentKeys = ["dehumidifiers","airMovers","axials","negativeAir"];
 const defaultTasks = () => [
   {id:crypto.randomUUID(),title:"Initial assessment",assignee:"",due:"",done:true},
   {id:crypto.randomUUID(),title:"Work authorization signed",assignee:"",due:"",done:true},
@@ -57,18 +58,34 @@ function normalizeTodos(list) {
   })).filter(todo => todo.title.trim()) : [];
 }
 
+function normalizeEquipmentLogs(logs) {
+  return Array.isArray(logs) ? logs.map(log => ({
+    id:log.id || crypto.randomUUID(),
+    date:dateOnly(log.date || log.createdAt),
+    technician:log.technician || "",
+    dehumidifiers:Number(log.dehumidifiers) || 0,
+    airMovers:Number(log.airMovers) || 0,
+    axials:Number(log.axials) || 0,
+    negativeAir:Number(log.negativeAir) || 0,
+    notes:log.notes || "",
+    carriedForward:Boolean(log.carriedForward),
+    createdAt:log.createdAt || currentTimestamp()
+  })).filter(log => log.date) : [];
+}
+
 function normalizeJobs(list) {
   return list.map(job => {
     const targetDate = job.targetDate || parseLegacyDate(job.target);
     const stage = stages.includes(job.stage) ? job.stage : stageMigration[job.stage] || "Mitigation Complete";
     return {
       ...job, id:job.id || job.jobNumber, jobNumber:job.jobNumber || job.id, stage,
+      unitSuite:job.unitSuite || job.unit || job.suite || "",
       targetDate, insurer:job.insurer || "Pending", priority:job.priority || "Normal",
       projectDirector:job.projectDirector || job.manager || "",
       documentFolder:job.documentFolder || "",
       materialStatus:job.materialStatus || "Pending",
       abatementStatus:job.abatementStatus || (stage === "Abatement" ? "In progress" : "Not required"),
-      equipmentLogs:Array.isArray(job.equipmentLogs) ? job.equipmentLogs : [],
+      equipmentLogs:normalizeEquipmentLogs(job.equipmentLogs),
       tasks:Array.isArray(job.tasks) ? job.tasks : defaultTasks(),
       notes:Array.isArray(job.notes) ? job.notes : [],
       updatedAt:job.updatedAt || job.createdAt || "1970-01-01T00:00:00.000Z"
@@ -83,6 +100,7 @@ function parseLegacyDate(value) {
 }
 
 async function saveJobs() {
+  jobs.forEach(carryForwardEquipmentLogs);
   localStorage.setItem(storageKey, JSON.stringify(jobs));
   localStorage.setItem(todoStorageKey, JSON.stringify(todos));
   renderOverview();
@@ -156,8 +174,81 @@ const slug = text => String(text || "").toLowerCase().replace(/\s/g,"");
 const formatDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString("en-US",{month:"short",day:"numeric",year:new Date(value).getFullYear() !== new Date().getFullYear() ? "numeric":undefined}) : "Not set";
 const isLate = () => false;
 const completedCount = job => job.tasks.filter(task => task.done).length;
-const latestEquipmentLog = job => [...(job.equipmentLogs || [])].sort((a,b) => new Date(`${b.date}T12:00:00`) - new Date(`${a.date}T12:00:00`) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0];
-const equipmentTotal = log => ["dehumidifiers","airMovers","axials","negativeAir"].reduce((sum,key) => sum + (Number(log?.[key]) || 0),0);
+const sortedEquipmentLogs = job => [...(job.equipmentLogs || [])].sort((a,b) => compareDates(b.date,a.date) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+const latestEquipmentLog = job => sortedEquipmentLogs(job)[0];
+const equipmentTotal = log => equipmentKeys.reduce((sum,key) => sum + (Number(log?.[key]) || 0),0);
+const locationLine = job => job.unitSuite ? `${job.address} · ${job.unitSuite}` : job.address;
+
+function dateOnly(value) {
+  if (!value) return new Date().toISOString().slice(0,10);
+  const text = String(value);
+  const parsed = new Date(text.includes("T") ? text : `${text}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString().slice(0,10) : parsed.toISOString().slice(0,10);
+}
+
+function addDays(date, days) {
+  const parsed = new Date(`${date}T12:00:00`);
+  parsed.setDate(parsed.getDate() + days);
+  return parsed.toISOString().slice(0,10);
+}
+
+function compareDates(a,b) {
+  return new Date(`${a}T12:00:00`) - new Date(`${b}T12:00:00`);
+}
+
+function carriedEquipmentLog(job, sourceLog, date) {
+  return {
+    id:`carry-${job.id}-${date}`,
+    date,
+    technician:"Auto carry-forward",
+    dehumidifiers:Number(sourceLog.dehumidifiers) || 0,
+    airMovers:Number(sourceLog.airMovers) || 0,
+    axials:Number(sourceLog.axials) || 0,
+    negativeAir:Number(sourceLog.negativeAir) || 0,
+    notes:"Carried forward from last saved equipment count.",
+    carriedForward:true,
+    createdAt:currentTimestamp()
+  };
+}
+
+function carryForwardEquipmentLogs(job) {
+  const logs = normalizeEquipmentLogs(job.equipmentLogs);
+  const actualLogs = logs.filter(log => !log.carriedForward);
+  if (!actualLogs.length) {
+    job.equipmentLogs = logs;
+    return job.equipmentLogs;
+  }
+
+  const actualByDate = new Map();
+  actualLogs.forEach(log => {
+    const existing = actualByDate.get(log.date);
+    if (!existing || new Date(log.createdAt || 0) >= new Date(existing.createdAt || 0)) actualByDate.set(log.date, log);
+  });
+
+  const dates = [...actualByDate.keys()].sort(compareDates);
+  const today = new Date().toISOString().slice(0,10);
+  const nextLogs = [];
+  let latestActual = null;
+
+  dates.forEach(date => {
+    if (latestActual) {
+      for (let day = addDays(latestActual.date,1); compareDates(day,date) < 0 && compareDates(day,today) <= 0; day = addDays(day,1)) {
+        nextLogs.push(carriedEquipmentLog(job,latestActual,day));
+      }
+    }
+    latestActual = actualByDate.get(date);
+    nextLogs.push(latestActual);
+  });
+
+  if (latestActual) {
+    for (let day = addDays(latestActual.date,1); compareDates(day,today) <= 0; day = addDays(day,1)) {
+      nextLogs.push(carriedEquipmentLog(job,latestActual,day));
+    }
+  }
+
+  job.equipmentLogs = nextLogs.sort((a,b) => compareDates(b.date,a.date) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  return job.equipmentLogs;
+}
 
 function showToast(title,message) {
   document.querySelector("#toastTitle").textContent = title;
@@ -174,7 +265,7 @@ function updateJobCount() {
 
 function jobRow(job,showMenu=false) {
   return `<tr data-job="${job.id}">
-    <td><div class="job-cell"><span class="job-type-icon ${slug(job.type)}">${typeSymbol(job.type)}</span><div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(job.address)}</strong><span>${escapeHtml(job.customer)}</span></div></div></td>
+    <td><div class="job-cell"><span class="job-type-icon ${slug(job.type)}">${typeSymbol(job.type)}</span><div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(locationLine(job))}</strong><span>${escapeHtml(job.customer)}</span></div></div></td>
     <td>${escapeHtml(job.type)}</td><td><span class="status ${slug(job.stage)}">${escapeHtml(job.stage)}</span></td>
     <td><div class="manager-cell"><span class="mini-avatar">${initials(job.projectDirector)}</span>${escapeHtml(job.projectDirector || "Not assigned")}</div></td>
     <td><div class="progress-cell"><div class="mini-progress"><span style="width:${job.progress}%"></span></div>${job.progress}%</div></td>
@@ -211,7 +302,7 @@ function renderPipeline() {
     return `<section class="kanban-column"><div class="kanban-header"><strong><span style="color:${stageColors[i]}">●</span> ${stage}</strong><span>${stageJobs.length}</span></div>
       ${stageJobs.map(job => `<article class="job-card" data-job="${job.id}">
         <div class="job-card-top"><span class="status ${slug(job.type)}">${job.type}</span><span class="priority-label ${slug(job.priority)}">${job.priority}</span></div>
-        <h4>${escapeHtml(job.jobNumber)}</h4><p>${escapeHtml(job.address)}<br>${escapeHtml(job.customer)}</p>
+        <h4>${escapeHtml(job.jobNumber)}</h4><p>${escapeHtml(locationLine(job))}<br>${escapeHtml(job.customer)}</p>
         <div class="job-card-footer"><span class="mini-avatar">${initials(job.projectDirector)}</span><span>${escapeHtml(job.projectDirector || "Not assigned")}</span></div>
       </article>`).join("") || `<div class="empty-column">No jobs</div>`}
     </section>`;
@@ -223,7 +314,7 @@ function renderJobs() {
   const query = (document.querySelector("#jobSearch")?.value || "").toLowerCase();
   const stage = document.querySelector("#stageFilter")?.value || "";
   const type = document.querySelector("#typeFilter")?.value || "";
-  const filtered = jobs.filter(job => (!query || `${job.jobNumber} ${job.customer} ${job.address} ${job.projectDirector}`.toLowerCase().includes(query)) && (!stage || job.stage===stage) && (!type || job.type===type));
+  const filtered = jobs.filter(job => (!query || `${job.jobNumber} ${job.customer} ${job.address} ${job.unitSuite} ${job.projectDirector}`.toLowerCase().includes(query)) && (!stage || job.stage===stage) && (!type || job.type===type));
   document.querySelector("#allJobsTable").innerHTML = filtered.map(job => jobRow(job)).join("") || `<tr><td colspan="5" class="empty-state">No matching jobs found.</td></tr>`;
   bindJobRows();
 }
@@ -231,12 +322,14 @@ function renderJobs() {
 function renderDetail(id) {
   const job = jobs.find(item => item.id===id);
   if (!job) return showView("jobs");
+  carryForwardEquipmentLogs(job);
   activeJobId = id;
   const done = completedCount(job);
   const open = job.tasks.length-done;
+  const latestEquipment = latestEquipmentLog(job) || {};
   document.querySelector("#jobDetail").innerHTML = `
     <div class="detail-heading">
-      <div><p class="eyebrow">${escapeHtml(job.jobNumber)} · ${escapeHtml(job.type.toUpperCase())} LOSS</p><h1>${escapeHtml(job.customer)}</h1><p>${escapeHtml(job.address)}</p></div>
+      <div><p class="eyebrow">${escapeHtml(job.jobNumber)} · ${escapeHtml(job.type.toUpperCase())} LOSS</p><h1>${escapeHtml(job.customer)}</h1><p>${escapeHtml(locationLine(job))}</p></div>
       <div class="detail-actions"><button class="btn secondary" data-action="edit-job">Edit job</button><button class="btn danger-outline" data-action="delete-job">Delete</button></div>
     </div>
     <div class="workflow-strip panel">
@@ -250,7 +343,7 @@ function renderDetail(id) {
           <div class="panel-header"><div><h3>Job information</h3><p>Key project details</p></div></div>
           <div class="info-grid">
             <div class="info-item"><span>Job number</span><strong>${escapeHtml(job.jobNumber)}</strong></div><div class="info-item"><span>Insurance carrier</span><strong>${escapeHtml(job.insurer)}</strong></div><div class="info-item"><span>Loss type</span><strong>${escapeHtml(job.type)}</strong></div>
-            <div class="info-item"><span>Project director</span><strong>${escapeHtml(job.projectDirector || "Not assigned")}</strong></div><div class="info-item"><span>Priority</span><strong>${escapeHtml(job.priority)}</strong></div>
+            <div class="info-item"><span>Unit / suite / office</span><strong>${escapeHtml(job.unitSuite || "Not added")}</strong></div><div class="info-item"><span>Project director</span><strong>${escapeHtml(job.projectDirector || "Not assigned")}</strong></div><div class="info-item"><span>Priority</span><strong>${escapeHtml(job.priority)}</strong></div>
             <div class="info-item"><span>Documents</span>${job.documentFolder?`<a href="${escapeAttribute(job.documentFolder)}" target="_blank" rel="noopener">Open document folder</a>`:`<strong>Not added</strong>`}</div>
           </div>
         </article>
@@ -268,11 +361,11 @@ function renderDetail(id) {
           <form class="equipment-form" id="equipmentForm">
             <label>Date<input name="date" type="date" required value="${new Date().toISOString().slice(0,10)}"></label>
             <label>Technician<input name="technician" placeholder="Who counted equipment?"></label>
-            <label>Dehumidifiers<input name="dehumidifiers" type="number" min="0" value="0"></label>
-            <label>Air movers<input name="airMovers" type="number" min="0" value="0"></label>
-            <label>Axials<input name="axials" type="number" min="0" value="0"></label>
-            <label>Negative air<input name="negativeAir" type="number" min="0" value="0"></label>
-            <label class="full">Notes<input name="notes" placeholder="Missing unit, picked up, added equipment, etc."></label>
+            <label>Dehumidifiers<input name="dehumidifiers" type="number" min="0" value="${Number(latestEquipment.dehumidifiers)||0}"></label>
+            <label>Air movers<input name="airMovers" type="number" min="0" value="${Number(latestEquipment.airMovers)||0}"></label>
+            <label>Axials<input name="axials" type="number" min="0" value="${Number(latestEquipment.axials)||0}"></label>
+            <label>Negative air<input name="negativeAir" type="number" min="0" value="${Number(latestEquipment.negativeAir)||0}"></label>
+            <label class="full">Notes<input name="notes" placeholder="Added/removed equipment, missing unit, picked up, etc."></label>
             <button class="btn primary full">Save daily equipment count</button>
           </form>
           <div class="equipment-log-list">${renderEquipmentLogs(job)}</div>
@@ -342,7 +435,7 @@ function bindDetailActions(job) {
   document.querySelector("#equipmentForm").onsubmit = event => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.target));
-    job.equipmentLogs = job.equipmentLogs || [];
+    job.equipmentLogs = (job.equipmentLogs || []).filter(log => log.date !== data.date);
     job.equipmentLogs.unshift({
       id:crypto.randomUUID(),
       date:data.date,
@@ -352,6 +445,7 @@ function bindDetailActions(job) {
       axials:Number(data.axials) || 0,
       negativeAir:Number(data.negativeAir) || 0,
       notes:data.notes || "",
+      carriedForward:false,
       createdAt:currentTimestamp()
     });
     touchJob(job); saveJobs(); renderDetail(job.id); showToast("Equipment count saved","The daily equipment count was saved.");
@@ -371,11 +465,11 @@ function equipmentSummary(job) {
 }
 
 function renderEquipmentLogs(job) {
-  const logs = [...(job.equipmentLogs || [])].sort((a,b) => new Date(`${b.date}T12:00:00`) - new Date(`${a.date}T12:00:00`) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  return logs.length ? logs.map(log => `<div class="equipment-log-item">
-    <div><strong>${formatDate(log.date)}</strong><span>${escapeHtml(log.technician || "Technician not listed")}</span></div>
+  const logs = sortedEquipmentLogs(job);
+  return logs.length ? logs.map(log => `<div class="equipment-log-item ${log.carriedForward?"carried":""}">
+    <div><strong>${formatDate(log.date)}</strong><span>${log.carriedForward?"Auto carry-forward":escapeHtml(log.technician || "Technician not listed")}</span></div>
     <div class="equipment-counts"><span>DH ${Number(log.dehumidifiers)||0}</span><span>AM ${Number(log.airMovers)||0}</span><span>AX ${Number(log.axials)||0}</span><span>NA ${Number(log.negativeAir)||0}</span></div>
-    ${log.notes?`<p>${escapeHtml(log.notes)}</p>`:""}
+    ${log.carriedForward?`<p>This count was carried forward automatically from the last saved field count.</p>`:(log.notes?`<p>${escapeHtml(log.notes)}</p>`:"")}
   </div>`).join("") : `<div class="empty-state">No equipment history yet.</div>`;
 }
 
@@ -444,7 +538,7 @@ function openJobModal(job=null) {
   document.querySelector("#jobModalTitle").textContent=job?"Edit job":"Create a job";
   document.querySelector("#jobSubmitBtn").textContent=job?"Save changes":"Create job";
   if (job) {
-    ["customer","type","address","jobNumber","projectDirector","stage","priority","insurer","documentFolder"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
+    ["customer","type","address","jobNumber","unitSuite","projectDirector","stage","priority","insurer","documentFolder"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
   } else {
     jobForm.elements.stage.value="Assessment";
     jobForm.elements.priority.value="Normal";
@@ -469,12 +563,12 @@ jobForm.onsubmit=event=>{
   const duplicate=jobs.some(job=>job.id!==editing?.id && job.jobNumber.toLowerCase()===jobNumber.toLowerCase());
   if (duplicate) return showToast("Job number in use","Choose a unique job number.");
   if (editing) {
-    Object.assign(editing,{customer:data.customer,address:data.address,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",jobNumber});
+    Object.assign(editing,{customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",jobNumber});
     touchJob(editing);
     closeJobModal();saveJobs();renderDetail(editing.id);showToast("Job updated","Your changes were saved.");
   } else {
     const createdAt=currentTimestamp();
-    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",equipmentLogs:[],tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
+    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",equipmentLogs:[],tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
     jobs.unshift(job);closeJobModal();saveJobs();renderDetail(job.id);showToast("Job created","The project is ready to manage.");
   }
 };

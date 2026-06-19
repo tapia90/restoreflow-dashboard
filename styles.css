@@ -224,6 +224,7 @@ tbody tr:hover { background: #f9fbff; }
 .equipment-form .full { grid-column: 1/-1; }
 .equipment-log-list { margin-top: 14px; }
 .equipment-log-item { display: grid; grid-template-columns: 1fr auto; gap: 8px; border-top: 1px solid #edf0f4; padding: 11px 0; }
+.equipment-log-item.carried { background: #fbfcff; margin: 0 -8px; padding: 11px 8px; border-radius: 9px; }
 .equipment-log-item strong, .equipment-log-item span { display: block; }.equipment-log-item strong { font-size: 10px; }.equipment-log-item span { color: #8a95a5; font-size: 9px; margin-top: 2px; }
 .equipment-log-item p { grid-column: 1/-1; color: #5f6b7d; font-size: 10px; margin: 0; }
 .equipment-counts { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
