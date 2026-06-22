@@ -276,7 +276,7 @@ function carryForwardEquipmentLogs(job) {
     nextLogs.push(latestActual);
   });
 
-  if (latestActual) {
+  if (latestActual && equipmentTotal(latestActual) > 0) {
     for (let day = addDays(latestActual.date,1); compareDates(day,today) <= 0; day = addDays(day,1)) {
       nextLogs.push(carriedEquipmentLog(job,latestActual,day));
     }
@@ -415,6 +415,7 @@ function renderDetail(id) {
             <label class="full">Notes<input name="notes" placeholder="Added/removed equipment, missing unit, picked up, etc."></label>
             <button class="btn primary full">Save daily equipment count</button>
           </form>
+          <button class="btn danger-outline full-btn equipment-stop-btn" id="stopEquipmentBtn">Stop equipment charging - all equipment removed</button>
           <div class="equipment-log-list">${renderEquipmentLogs(job)}</div>
         </article>
         <article class="panel">
@@ -526,6 +527,23 @@ function bindDetailActions(job) {
     });
     touchJob(job); saveJobs(); renderDetail(job.id); showToast("Equipment count saved","The daily equipment count was saved.");
   };
+  document.querySelector("#stopEquipmentBtn").onclick = () => {
+    const today = new Date().toISOString().slice(0,10);
+    job.equipmentLogs = (job.equipmentLogs || []).filter(log => log.date !== today);
+    job.equipmentLogs.unshift({
+      id:crypto.randomUUID(),
+      date:today,
+      technician:"Equipment removed",
+      dehumidifiers:0,
+      airMovers:0,
+      axials:0,
+      negativeAir:0,
+      notes:"All equipment removed. Stop charging equipment after this date.",
+      carriedForward:false,
+      createdAt:currentTimestamp()
+    });
+    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Equipment charging stopped","All equipment was marked removed for today.");
+  };
 }
 
 function renderUnits(job) {
@@ -541,6 +559,7 @@ function renderUnits(job) {
 function equipmentSummary(job) {
   const latest = latestEquipmentLog(job);
   if (!latest) return `<div class="equipment-summary empty">No equipment count has been recorded for this job yet.</div>`;
+  if (equipmentTotal(latest) === 0) return `<div class="equipment-summary removed">Equipment removed on ${formatDate(latest.date)}. Future days will not carry equipment forward.</div>`;
   return `<div class="equipment-summary">
     <div><span>Last count</span><strong>${formatDate(latest.date)}</strong></div>
     <div><span>Dehus</span><strong>${Number(latest.dehumidifiers)||0}</strong></div>
