@@ -6,6 +6,7 @@ const todoStorageKey = "restoreflow-todos-v1";
 const legacyStorageKey = "restoreflow-jobs";
 const todoRecordId = "__restoreflow_todos__";
 const equipmentKeys = ["dehumidifiers","airMovers","axials","negativeAir"];
+const unitStatuses = ["Needs access","No access","Demo needed","Under mitigation","Finished"];
 const defaultTasks = () => [
   {id:crypto.randomUUID(),title:"Initial assessment",assignee:"",due:"",done:true},
   {id:crypto.randomUUID(),title:"Work authorization signed",assignee:"",due:"",done:true},
@@ -73,6 +74,29 @@ function normalizeEquipmentLogs(logs) {
   })).filter(log => log.date) : [];
 }
 
+function normalizeUnits(job) {
+  const units = Array.isArray(job.units) ? job.units : [];
+  const normalized = units.map(unit => ({
+    id:unit.id || crypto.randomUUID(),
+    name:unit.name || unit.unit || unit.suite || "",
+    status:unitStatuses.includes(unit.status) ? unit.status : "Needs access",
+    notes:unit.notes || "",
+    createdAt:unit.createdAt || currentTimestamp(),
+    updatedAt:unit.updatedAt || unit.createdAt || currentTimestamp()
+  })).filter(unit => unit.name.trim());
+  if (!normalized.length && (job.unitSuite || job.unit || job.suite)) {
+    normalized.push({
+      id:crypto.randomUUID(),
+      name:job.unitSuite || job.unit || job.suite,
+      status:"Needs access",
+      notes:"",
+      createdAt:job.createdAt || currentTimestamp(),
+      updatedAt:job.updatedAt || job.createdAt || currentTimestamp()
+    });
+  }
+  return normalized;
+}
+
 function normalizeJobs(list) {
   return list.map(job => {
     const targetDate = job.targetDate || parseLegacyDate(job.target);
@@ -85,9 +109,11 @@ function normalizeJobs(list) {
       documentFolder:job.documentFolder || "",
       materialStatus:job.materialStatus || "Pending",
       abatementStatus:job.abatementStatus || (stage === "Abatement" ? "In progress" : "Not required"),
+      units:normalizeUnits(job),
       equipmentLogs:normalizeEquipmentLogs(job.equipmentLogs),
       tasks:Array.isArray(job.tasks) ? job.tasks : defaultTasks(),
       notes:Array.isArray(job.notes) ? job.notes : [],
+      createdAt:job.createdAt || currentTimestamp(),
       updatedAt:job.updatedAt || job.createdAt || "1970-01-01T00:00:00.000Z"
     };
   });
@@ -171,13 +197,23 @@ const initials = name => (name || "?").split(" ").map(n => n[0]).join("").slice(
 const typeSymbol = type => ({Water:"W",Fire:"F",Mold:"M",Reconstruction:"R"}[type] || "J");
 const money = value => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(value)||0);
 const slug = text => String(text || "").toLowerCase().replace(/\s/g,"");
-const formatDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString("en-US",{month:"short",day:"numeric",year:new Date(value).getFullYear() !== new Date().getFullYear() ? "numeric":undefined}) : "Not set";
+const formatDate = value => {
+  if (!value) return "Not set";
+  const date = dateOnly(value);
+  return new Date(`${date}T12:00:00`).toLocaleDateString("en-US",{month:"short",day:"numeric",year:new Date(date).getFullYear() !== new Date().getFullYear() ? "numeric":undefined});
+};
 const isLate = () => false;
 const completedCount = job => job.tasks.filter(task => task.done).length;
 const sortedEquipmentLogs = job => [...(job.equipmentLogs || [])].sort((a,b) => compareDates(b.date,a.date) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 const latestEquipmentLog = job => sortedEquipmentLogs(job)[0];
 const equipmentTotal = log => equipmentKeys.reduce((sum,key) => sum + (Number(log?.[key]) || 0),0);
-const locationLine = job => job.unitSuite ? `${job.address} · ${job.unitSuite}` : job.address;
+const sortedJobs = list => [...list].sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+const unitSummary = job => {
+  const total = job.units?.length || 0;
+  const finished = (job.units || []).filter(unit => unit.status === "Finished").length;
+  return total ? `${finished}/${total} finished` : "No units";
+};
+const locationLine = job => job.address;
 
 function dateOnly(value) {
   if (!value) return new Date().toISOString().slice(0,10);
@@ -266,9 +302,10 @@ function updateJobCount() {
 function jobRow(job,showMenu=false) {
   return `<tr data-job="${job.id}">
     <td><div class="job-cell"><span class="job-type-icon ${slug(job.type)}">${typeSymbol(job.type)}</span><div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(locationLine(job))}</strong><span>${escapeHtml(job.customer)}</span></div></div></td>
+    <td>${formatDate(job.createdAt)}</td>
     <td>${escapeHtml(job.type)}</td><td><span class="status ${slug(job.stage)}">${escapeHtml(job.stage)}</span></td>
+    <td><span class="unit-table-summary">${escapeHtml(unitSummary(job))}</span></td>
     <td><div class="manager-cell"><span class="mini-avatar">${initials(job.projectDirector)}</span>${escapeHtml(job.projectDirector || "Not assigned")}</div></td>
-    <td><div class="progress-cell"><div class="mini-progress"><span style="width:${job.progress}%"></span></div>${job.progress}%</div></td>
     ${showMenu?`<td class="kebab">•••</td>`:""}
   </tr>`;
 }
@@ -292,13 +329,13 @@ function renderOverview() {
   ).join("");
 
   renderTodos();
-  document.querySelector("#activeJobsTable").innerHTML = jobs.slice(0,5).map(job => jobRow(job,true)).join("");
+  document.querySelector("#activeJobsTable").innerHTML = sortedJobs(jobs).slice(0,5).map(job => jobRow(job,true)).join("");
   bindJobRows();
 }
 
 function renderPipeline() {
   document.querySelector("#kanbanBoard").innerHTML = stages.map((stage,i) => {
-    const stageJobs = jobs.filter(job => job.stage === stage);
+    const stageJobs = sortedJobs(jobs).filter(job => job.stage === stage);
     return `<section class="kanban-column"><div class="kanban-header"><strong><span style="color:${stageColors[i]}">●</span> ${stage}</strong><span>${stageJobs.length}</span></div>
       ${stageJobs.map(job => `<article class="job-card" data-job="${job.id}">
         <div class="job-card-top"><span class="status ${slug(job.type)}">${job.type}</span><span class="priority-label ${slug(job.priority)}">${job.priority}</span></div>
@@ -314,8 +351,8 @@ function renderJobs() {
   const query = (document.querySelector("#jobSearch")?.value || "").toLowerCase();
   const stage = document.querySelector("#stageFilter")?.value || "";
   const type = document.querySelector("#typeFilter")?.value || "";
-  const filtered = jobs.filter(job => (!query || `${job.jobNumber} ${job.customer} ${job.address} ${job.unitSuite} ${job.projectDirector}`.toLowerCase().includes(query)) && (!stage || job.stage===stage) && (!type || job.type===type));
-  document.querySelector("#allJobsTable").innerHTML = filtered.map(job => jobRow(job)).join("") || `<tr><td colspan="5" class="empty-state">No matching jobs found.</td></tr>`;
+  const filtered = sortedJobs(jobs).filter(job => (!query || `${job.jobNumber} ${job.customer} ${job.address} ${job.unitSuite} ${(job.units || []).map(unit => unit.name).join(" ")} ${job.projectDirector}`.toLowerCase().includes(query)) && (!stage || job.stage===stage) && (!type || job.type===type));
+  document.querySelector("#allJobsTable").innerHTML = filtered.map(job => jobRow(job)).join("") || `<tr><td colspan="6" class="empty-state">No matching jobs found.</td></tr>`;
   bindJobRows();
 }
 
@@ -342,10 +379,20 @@ function renderDetail(id) {
         <article class="panel">
           <div class="panel-header"><div><h3>Job information</h3><p>Key project details</p></div></div>
           <div class="info-grid">
-            <div class="info-item"><span>Job number</span><strong>${escapeHtml(job.jobNumber)}</strong></div><div class="info-item"><span>Insurance carrier</span><strong>${escapeHtml(job.insurer)}</strong></div><div class="info-item"><span>Loss type</span><strong>${escapeHtml(job.type)}</strong></div>
-            <div class="info-item"><span>Unit / suite / office</span><strong>${escapeHtml(job.unitSuite || "Not added")}</strong></div><div class="info-item"><span>Project director</span><strong>${escapeHtml(job.projectDirector || "Not assigned")}</strong></div><div class="info-item"><span>Priority</span><strong>${escapeHtml(job.priority)}</strong></div>
+            <div class="info-item"><span>Job number</span><strong>${escapeHtml(job.jobNumber)}</strong></div><div class="info-item"><span>Created</span><strong>${formatDate(job.createdAt)}</strong></div><div class="info-item"><span>Insurance carrier</span><strong>${escapeHtml(job.insurer)}</strong></div><div class="info-item"><span>Loss type</span><strong>${escapeHtml(job.type)}</strong></div>
+            <div class="info-item"><span>Units / suites</span><strong>${escapeHtml(unitSummary(job))}</strong></div><div class="info-item"><span>Project director</span><strong>${escapeHtml(job.projectDirector || "Not assigned")}</strong></div><div class="info-item"><span>Priority</span><strong>${escapeHtml(job.priority)}</strong></div>
             <div class="info-item"><span>Documents</span>${job.documentFolder?`<a href="${escapeAttribute(job.documentFolder)}" target="_blank" rel="noopener">Open document folder</a>`:`<strong>Not added</strong>`}</div>
           </div>
+        </article>
+        <article class="panel">
+          <div class="panel-header"><div><h3>Units / suites tracker</h3><p>Track access, demo, mitigation, and finished areas</p></div><span class="pill">${escapeHtml(unitSummary(job))}</span></div>
+          <form class="unit-form" id="unitForm">
+            <label>Unit / suite / office<input name="name" required placeholder="Unit 204, Suite B, Office 3"></label>
+            <label>Status<select name="status">${unitStatuses.map(status => `<option>${status}</option>`).join("")}</select></label>
+            <label class="full">Notes<input name="notes" placeholder="Tenant issue, no access, demo needed, complete, etc."></label>
+            <button class="btn primary full">Add unit / suite</button>
+          </form>
+          <div class="unit-list">${renderUnits(job)}</div>
         </article>
         <article class="panel">
           <div class="panel-header"><div><h3>Project checklist</h3><p>${done} of ${job.tasks.length} completed</p></div><button class="text-btn" id="addTaskBtn">＋ Add task</button></div>
@@ -432,6 +479,35 @@ function bindDetailActions(job) {
     job.notes.push({id:crypto.randomUUID(),text,createdAt:currentTimestamp()});
     touchJob(job); saveJobs(); renderDetail(job.id); showToast("Note added","The update was saved to this job.");
   };
+  document.querySelector("#unitForm").onsubmit = event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.target));
+    job.units = job.units || [];
+    job.units.push({
+      id:crypto.randomUUID(),
+      name:data.name,
+      status:unitStatuses.includes(data.status) ? data.status : "Needs access",
+      notes:data.notes || "",
+      createdAt:currentTimestamp(),
+      updatedAt:currentTimestamp()
+    });
+    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Unit added","The unit tracker was updated.");
+  };
+  document.querySelectorAll("[data-unit-status]").forEach(select => {
+    select.onchange = event => {
+      const unit = job.units.find(item => item.id === select.dataset.unitStatus);
+      if (!unit) return;
+      unit.status = event.target.value;
+      unit.updatedAt = currentTimestamp();
+      touchJob(job); saveJobs(); renderDetail(job.id); showToast("Unit status saved",`${unit.name} is now marked ${unit.status}.`);
+    };
+  });
+  document.querySelectorAll("[data-unit-delete]").forEach(button => {
+    button.onclick = () => {
+      job.units = (job.units || []).filter(unit => unit.id !== button.dataset.unitDelete);
+      touchJob(job); saveJobs(); renderDetail(job.id); showToast("Unit removed","The unit tracker was updated.");
+    };
+  });
   document.querySelector("#equipmentForm").onsubmit = event => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.target));
@@ -450,6 +526,16 @@ function bindDetailActions(job) {
     });
     touchJob(job); saveJobs(); renderDetail(job.id); showToast("Equipment count saved","The daily equipment count was saved.");
   };
+}
+
+function renderUnits(job) {
+  const units = job.units || [];
+  return units.length ? units.map(unit => `<div class="unit-item ${slug(unit.status)}">
+    <div><strong>${escapeHtml(unit.name)}</strong><span>Updated ${formatDate(unit.updatedAt)}</span></div>
+    <select data-unit-status="${unit.id}">${unitStatuses.map(status => `<option ${status===unit.status?"selected":""}>${status}</option>`).join("")}</select>
+    <button class="unit-delete" data-unit-delete="${unit.id}" aria-label="Remove ${escapeHtml(unit.name)}">×</button>
+    ${unit.notes?`<p>${escapeHtml(unit.notes)}</p>`:""}
+  </div>`).join("") : `<div class="empty-state">No units, suites, or offices added yet.</div>`;
 }
 
 function equipmentSummary(job) {
@@ -568,8 +654,9 @@ jobForm.onsubmit=event=>{
     closeJobModal();saveJobs();renderDetail(editing.id);showToast("Job updated","Your changes were saved.");
   } else {
     const createdAt=currentTimestamp();
-    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",equipmentLogs:[],tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
-    jobs.unshift(job);closeJobModal();saveJobs();renderDetail(job.id);showToast("Job created","The project is ready to manage.");
+    const starterUnit = data.unitSuite ? [{id:crypto.randomUUID(),name:data.unitSuite,status:"Needs access",notes:"",createdAt,updatedAt:createdAt}] : [];
+    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",units:starterUnit,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",equipmentLogs:[],tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
+    jobs.push(job);closeJobModal();saveJobs();renderDetail(job.id);showToast("Job created","The project is ready to manage.");
   }
 };
 
