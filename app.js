@@ -1,6 +1,6 @@
-const stages = ["Assessment", "Stabilizing", "Mitigation", "Abatement", "Monitoring", "Repairs", "Mitigation Complete"];
-const stageColors = ["#e5a03f", "#3e7bdd", "#2c9a79", "#d56b35", "#8b98aa", "#7653c8", "#c84646"];
-const stageMigration = {Inspection:"Assessment", Estimate:"Assessment", Final:"Mitigation Complete"};
+const stages = ["Assessment", "Stabilizing", "Mitigation", "Abatement", "Monitoring", "Repairs", "Mitigation Complete", "Lost Job"];
+const stageColors = ["#e5a03f", "#3e7bdd", "#2c9a79", "#d56b35", "#8b98aa", "#7653c8", "#c84646", "#6f7785"];
+const stageMigration = {Inspection:"Assessment", Estimate:"Assessment", Final:"Mitigation Complete", Lost:"Lost Job"};
 const storageKey = "restoreflow-jobs-v2";
 const todoStorageKey = "restoreflow-todos-v1";
 const legacyStorageKey = "restoreflow-jobs";
@@ -107,9 +107,13 @@ function normalizeJobs(list) {
       unitSuite:job.unitSuite || job.unit || job.suite || "",
       targetDate, insurer:job.insurer || "Pending", priority:job.priority || "Normal",
       projectDirector:job.projectDirector || job.manager || "",
+      contactName:job.contactName || job.pointOfContact || job.contact || "",
+      contactPhone:job.contactPhone || job.phone || job.contactNumber || "",
       documentFolder:job.documentFolder || "",
       materialStatus:job.materialStatus || "Pending",
       abatementStatus:job.abatementStatus || (stage === "Abatement" ? "In progress" : "Not required"),
+      lostReason:job.lostReason || "",
+      lostDate:job.lostDate || "",
       units:normalizeUnits(job),
       equipmentLogs:normalizeEquipmentLogs(job.equipmentLogs),
       tasks:Array.isArray(job.tasks) ? job.tasks : defaultTasks(),
@@ -216,7 +220,7 @@ const pickupReminderStatus = date => {
   return "Upcoming";
 };
 const equipmentReminderJobs = () => sortedJobs(jobs).map(job => ({job,latest:latestEquipmentLog(job),pickupDate:latestPickupReminder(job)})).filter(item => item.pickupDate && equipmentTotal(item.latest) > 0);
-const sortedJobs = list => [...list].sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+const sortedJobs = list => [...list].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 const unitSummary = job => {
   const total = job.units?.length || 0;
   const finished = (job.units || []).filter(unit => unit.status === "Finished").length;
@@ -310,7 +314,7 @@ function updateJobCount() {
 
 function jobRow(job,showMenu=false) {
   return `<tr data-job="${job.id}">
-    <td><div class="job-cell"><span class="job-type-icon ${slug(job.type)}">${typeSymbol(job.type)}</span><div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(locationLine(job))}</strong><span>${escapeHtml(job.customer)}</span></div></div></td>
+    <td><div class="job-cell"><span class="job-type-icon ${slug(job.type)}">${typeSymbol(job.type)}</span><div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(locationLine(job))}</strong><span>${escapeHtml(job.customer)}</span>${job.contactName || job.contactPhone ? `<span class="contact-line">POC: ${escapeHtml(job.contactName || "No name")}${job.contactPhone?` · ${escapeHtml(job.contactPhone)}`:""}</span>`:""}</div></div></td>
     <td>${formatDate(job.createdAt)}</td>
     <td>${escapeHtml(job.type)}</td><td><span class="status ${slug(job.stage)}">${escapeHtml(job.stage)}</span></td>
     <td><span class="unit-table-summary">${escapeHtml(unitSummary(job))}</span></td>
@@ -351,7 +355,7 @@ function renderPipeline() {
     return `<section class="kanban-column"><div class="kanban-header"><strong><span style="color:${stageColors[i]}">●</span> ${stage}</strong><span>${stageJobs.length}</span></div>
       ${stageJobs.map(job => `<article class="job-card" data-job="${job.id}">
         <div class="job-card-top"><span class="status ${slug(job.type)}">${job.type}</span><span class="priority-label ${slug(job.priority)}">${job.priority}</span></div>
-        <h4>${escapeHtml(job.jobNumber)}</h4><p>${escapeHtml(locationLine(job))}<br>${escapeHtml(job.customer)}</p>
+        <h4>${escapeHtml(job.jobNumber)}</h4><p>${escapeHtml(locationLine(job))}<br>${escapeHtml(job.customer)}${job.contactName || job.contactPhone ? `<br>POC: ${escapeHtml(job.contactName || "No name")}${job.contactPhone?` · ${escapeHtml(job.contactPhone)}`:""}`:""}</p>
         <div class="job-card-footer"><span class="mini-avatar">${initials(job.projectDirector)}</span><span>${escapeHtml(job.projectDirector || "Not assigned")}</span></div>
       </article>`).join("") || `<div class="empty-column">No jobs</div>`}
     </section>`;
@@ -363,7 +367,7 @@ function renderJobs() {
   const query = (document.querySelector("#jobSearch")?.value || "").toLowerCase();
   const stage = document.querySelector("#stageFilter")?.value || "";
   const type = document.querySelector("#typeFilter")?.value || "";
-  const filtered = sortedJobs(jobs).filter(job => (!query || `${job.jobNumber} ${job.customer} ${job.address} ${job.unitSuite} ${(job.units || []).map(unit => unit.name).join(" ")} ${job.projectDirector}`.toLowerCase().includes(query)) && (!stage || job.stage===stage) && (!type || job.type===type));
+  const filtered = sortedJobs(jobs).filter(job => (!query || `${job.jobNumber} ${job.customer} ${job.address} ${job.unitSuite} ${(job.units || []).map(unit => unit.name).join(" ")} ${job.contactName} ${job.contactPhone} ${job.projectDirector}`.toLowerCase().includes(query)) && (!stage || job.stage===stage) && (!type || job.type===type));
   document.querySelector("#allJobsTable").innerHTML = filtered.map(job => jobRow(job)).join("") || `<tr><td colspan="6" class="empty-state">No matching jobs found.</td></tr>`;
   bindJobRows();
 }
@@ -392,8 +396,10 @@ function renderDetail(id) {
           <div class="panel-header"><div><h3>Job information</h3><p>Key project details</p></div></div>
           <div class="info-grid">
             <div class="info-item"><span>Job number</span><strong>${escapeHtml(job.jobNumber)}</strong></div><div class="info-item"><span>Created</span><strong>${formatDate(job.createdAt)}</strong></div><div class="info-item"><span>Insurance carrier</span><strong>${escapeHtml(job.insurer)}</strong></div><div class="info-item"><span>Loss type</span><strong>${escapeHtml(job.type)}</strong></div>
+            <div class="info-item"><span>Point of contact</span><strong>${escapeHtml(job.contactName || "Not added")}</strong></div><div class="info-item"><span>Contact phone</span><strong>${escapeHtml(job.contactPhone || "Not added")}</strong></div>
             <div class="info-item"><span>Units / suites</span><strong>${escapeHtml(unitSummary(job))}</strong></div><div class="info-item"><span>Project director</span><strong>${escapeHtml(job.projectDirector || "Not assigned")}</strong></div><div class="info-item"><span>Priority</span><strong>${escapeHtml(job.priority)}</strong></div>
             <div class="info-item"><span>Documents</span>${job.documentFolder?`<a href="${escapeAttribute(job.documentFolder)}" target="_blank" rel="noopener">Open document folder</a>`:`<strong>Not added</strong>`}</div>
+            ${job.stage==="Lost Job"?`<div class="info-item"><span>Lost date</span><strong>${formatDate(job.lostDate)}</strong></div><div class="info-item"><span>Lost reason</span><strong>${escapeHtml(job.lostReason || "Not added")}</strong></div>`:""}
           </div>
         </article>
         <article class="panel">
@@ -413,6 +419,15 @@ function renderDetail(id) {
             <div><strong>${escapeHtml(task.title)}</strong></div>
             <button class="task-delete" aria-label="Delete task">×</button>
           </div>`).join("") || `<div class="empty-state">No tasks yet.</div>`}</div>
+        </article>
+        <article class="panel">
+          <div class="panel-header"><div><h3>Lost job / no work</h3><p>Use this when the assessment happened but the job did not move forward</p></div></div>
+          <form class="lost-job-form" id="lostJobForm">
+            <label>Status<select name="lostStatus"><option value="">Still active</option><option value="Lost Job" ${job.stage==="Lost Job"?"selected":""}>Lost job / no work</option></select></label>
+            <label>Date<input name="lostDate" type="date" value="${job.lostDate || ""}"></label>
+            <label class="full">Reason<input name="lostReason" placeholder="Management declined, client canceled, no work approved..." value="${escapeAttribute(job.lostReason || "")}"></label>
+            <button class="btn secondary full">Save lost job status</button>
+          </form>
         </article>
         <article class="panel">
           <div class="panel-header"><div><h3>Equipment tracker</h3><p>Daily count of equipment left on site</p></div></div>
@@ -492,6 +507,22 @@ function bindDetailActions(job) {
     if (!text) return;
     job.notes.push({id:crypto.randomUUID(),text,createdAt:currentTimestamp()});
     touchJob(job); saveJobs(); renderDetail(job.id); showToast("Note added","The update was saved to this job.");
+  };
+  document.querySelector("#lostJobForm").onsubmit = event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.target));
+    if (data.lostStatus === "Lost Job") {
+      job.stage = "Lost Job";
+      job.progress = 0;
+      job.lostDate = data.lostDate || new Date().toISOString().slice(0,10);
+      job.lostReason = data.lostReason || "";
+      job.notes.push({id:crypto.randomUUID(),text:`Job marked lost/no work. ${job.lostReason}`.trim(),createdAt:currentTimestamp()});
+    } else if (job.stage === "Lost Job") {
+      job.stage = "Assessment";
+      job.lostDate = "";
+      job.lostReason = "";
+    }
+    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Job status saved","The lost job status was updated.");
   };
   document.querySelector("#unitForm").onsubmit = event => {
     event.preventDefault();
@@ -672,7 +703,7 @@ function openJobModal(job=null) {
   document.querySelector("#jobModalTitle").textContent=job?"Edit job":"Create a job";
   document.querySelector("#jobSubmitBtn").textContent=job?"Save changes":"Create job";
   if (job) {
-    ["customer","type","address","jobNumber","unitSuite","projectDirector","stage","priority","insurer","documentFolder"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
+    ["customer","type","address","jobNumber","unitSuite","contactName","contactPhone","projectDirector","stage","priority","insurer","documentFolder"].forEach(key=>jobForm.elements[key].value=job[key] ?? "");
   } else {
     jobForm.elements.stage.value="Assessment";
     jobForm.elements.priority.value="Normal";
@@ -697,13 +728,13 @@ jobForm.onsubmit=event=>{
   const duplicate=jobs.some(job=>job.id!==editing?.id && job.jobNumber.toLowerCase()===jobNumber.toLowerCase());
   if (duplicate) return showToast("Job number in use","Choose a unique job number.");
   if (editing) {
-    Object.assign(editing,{customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",jobNumber});
+    Object.assign(editing,{customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",contactName:data.contactName||"",contactPhone:data.contactPhone||"",type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",jobNumber});
     touchJob(editing);
     closeJobModal();saveJobs();renderDetail(editing.id);showToast("Job updated","Your changes were saved.");
   } else {
     const createdAt=currentTimestamp();
     const starterUnit = data.unitSuite ? [{id:crypto.randomUUID(),name:data.unitSuite,status:"Needs access",notes:"",createdAt,updatedAt:createdAt}] : [];
-    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",units:starterUnit,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",equipmentLogs:[],tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
+    const job={id:jobNumber,jobNumber,customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",contactName:data.contactName||"",contactPhone:data.contactPhone||"",units:starterUnit,type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",progress:5,materialStatus:"Pending",abatementStatus:"Not required",lostReason:"",lostDate:"",equipmentLogs:[],tasks:defaultTasks(),notes:[],createdAt,updatedAt:createdAt};
     jobs.push(job);closeJobModal();saveJobs();renderDetail(job.id);showToast("Job created","The project is ready to manage.");
   }
 };
