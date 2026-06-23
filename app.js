@@ -69,6 +69,7 @@ function normalizeEquipmentLogs(logs) {
     axials:Number(log.axials) || 0,
     negativeAir:Number(log.negativeAir) || 0,
     notes:log.notes || "",
+    pickupReminderDate:log.pickupReminderDate || "",
     carriedForward:Boolean(log.carriedForward),
     createdAt:log.createdAt || currentTimestamp()
   })).filter(log => log.date) : [];
@@ -207,6 +208,14 @@ const completedCount = job => job.tasks.filter(task => task.done).length;
 const sortedEquipmentLogs = job => [...(job.equipmentLogs || [])].sort((a,b) => compareDates(b.date,a.date) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 const latestEquipmentLog = job => sortedEquipmentLogs(job)[0];
 const equipmentTotal = log => equipmentKeys.reduce((sum,key) => sum + (Number(log?.[key]) || 0),0);
+const latestPickupReminder = job => sortedEquipmentLogs(job).find(log => !log.carriedForward && equipmentTotal(log) > 0 && log.pickupReminderDate)?.pickupReminderDate || "";
+const pickupReminderStatus = date => {
+  const today = new Date().toISOString().slice(0,10);
+  if (compareDates(date,today) < 0) return "Overdue";
+  if (compareDates(date,today) === 0) return "Due today";
+  return "Upcoming";
+};
+const equipmentReminderJobs = () => sortedJobs(jobs).map(job => ({job,latest:latestEquipmentLog(job),pickupDate:latestPickupReminder(job)})).filter(item => item.pickupDate && equipmentTotal(item.latest) > 0);
 const sortedJobs = list => [...list].sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
 const unitSummary = job => {
   const total = job.units?.length || 0;
@@ -313,6 +322,8 @@ function jobRow(job,showMenu=false) {
 function renderOverview() {
   const openTasks = jobs.reduce((sum,job) => sum + job.tasks.filter(task => !task.done).length,0);
   const openTodos = todos.filter(todo => !todo.done).length;
+  const reminders = equipmentReminderJobs();
+  const dueReminders = reminders.filter(item => pickupReminderStatus(item.pickupDate) !== "Upcoming").length;
   const metrics = document.querySelectorAll(".metric-card");
   metrics[0].querySelector("h2").textContent = jobs.length;
   metrics[0].querySelector("small").textContent = `Across ${stages.length} project stages`;
@@ -321,7 +332,7 @@ function renderOverview() {
   metrics[2].querySelector("h2").textContent = openTodos;
   metrics[2].querySelector("small").textContent = "Billing questions and follow-ups";
   document.querySelector(".attention-banner strong").textContent = `${openTodos} to-dos to complete`;
-  document.querySelector(".attention-banner span").textContent = openTodos ? "Billing or office follow-ups need your attention." : "No billing follow-ups are currently open.";
+  document.querySelector(".attention-banner span").textContent = dueReminders ? `${dueReminders} equipment pickup reminder${dueReminders===1?"":"s"} due now.` : (openTodos ? "Billing or office follow-ups need your attention." : "No billing follow-ups are currently open.");
 
   const counts = stages.map(stage => jobs.filter(job => job.stage === stage).length);
   document.querySelector("#pipelineChart").innerHTML = stages.map((stage,i) =>
@@ -329,6 +340,7 @@ function renderOverview() {
   ).join("");
 
   renderTodos();
+  renderEquipmentReminders(reminders);
   document.querySelector("#activeJobsTable").innerHTML = sortedJobs(jobs).slice(0,5).map(job => jobRow(job,true)).join("");
   bindJobRows();
 }
@@ -408,6 +420,7 @@ function renderDetail(id) {
           <form class="equipment-form" id="equipmentForm">
             <label>Date<input name="date" type="date" required value="${new Date().toISOString().slice(0,10)}"></label>
             <label>Technician<input name="technician" placeholder="Who counted equipment?"></label>
+            <label>Pickup reminder<input name="pickupReminderDate" type="date" value="${latestPickupReminder(job)}"></label>
             <label>Dehumidifiers<input name="dehumidifiers" type="number" min="0" value="${Number(latestEquipment.dehumidifiers)||0}"></label>
             <label>Air movers<input name="airMovers" type="number" min="0" value="${Number(latestEquipment.airMovers)||0}"></label>
             <label>Axials<input name="axials" type="number" min="0" value="${Number(latestEquipment.axials)||0}"></label>
@@ -522,6 +535,7 @@ function bindDetailActions(job) {
       axials:Number(data.axials) || 0,
       negativeAir:Number(data.negativeAir) || 0,
       notes:data.notes || "",
+      pickupReminderDate:data.pickupReminderDate || "",
       carriedForward:false,
       createdAt:currentTimestamp()
     });
@@ -539,6 +553,7 @@ function bindDetailActions(job) {
       axials:0,
       negativeAir:0,
       notes:"All equipment removed. Stop charging equipment after this date.",
+      pickupReminderDate:"",
       carriedForward:false,
       createdAt:currentTimestamp()
     });
@@ -574,6 +589,7 @@ function renderEquipmentLogs(job) {
   return logs.length ? logs.map(log => `<div class="equipment-log-item ${log.carriedForward?"carried":""}">
     <div><strong>${formatDate(log.date)}</strong><span>${log.carriedForward?"Auto carry-forward":escapeHtml(log.technician || "Technician not listed")}</span></div>
     <div class="equipment-counts"><span>DH ${Number(log.dehumidifiers)||0}</span><span>AM ${Number(log.airMovers)||0}</span><span>AX ${Number(log.axials)||0}</span><span>NA ${Number(log.negativeAir)||0}</span></div>
+    ${log.pickupReminderDate?`<p class="pickup-reminder-line">Pickup reminder: ${formatDate(log.pickupReminderDate)}</p>`:""}
     ${log.carriedForward?`<p>This count was carried forward automatically from the last saved field count.</p>`:(log.notes?`<p>${escapeHtml(log.notes)}</p>`:"")}
   </div>`).join("") : `<div class="empty-state">No equipment history yet.</div>`;
 }
@@ -617,6 +633,19 @@ function renderTodos() {
       saveJobs(); showToast("To-do removed","Your follow-up list was updated.");
     };
   });
+}
+
+function renderEquipmentReminders(reminders = equipmentReminderJobs()) {
+  if (!document.querySelector("#equipmentReminderList")) return;
+  const openCount = reminders.length;
+  document.querySelector("#equipmentReminderCount").textContent = `${openCount} open`;
+  document.querySelector("#equipmentReminderList").innerHTML = openCount ? reminders.map(({job,latest,pickupDate}) => {
+    const status = pickupReminderStatus(pickupDate);
+    return `<button class="equipment-reminder-item ${slug(status)}" data-job="${job.id}">
+      <div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(job.address)}</strong><span>${equipmentTotal(latest)} item${equipmentTotal(latest)===1?"":"s"} on site</span></div>
+      <div><span class="reminder-status">${status}</span><strong>${formatDate(pickupDate)}</strong></div>
+    </button>`;
+  }).join("") : `<div class="empty-state">No equipment pickup reminders right now.</div>`;
 }
 
 function showView(name) {

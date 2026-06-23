@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260621b">
+  <link rel="stylesheet" href="styles.css?v=20260622a">
 </head>
 <body>
   <div class="auth-screen" id="authScreen">
@@ -130,6 +130,14 @@
             </article>
           </div>
 
+          <article class="panel equipment-reminders-panel">
+            <div class="panel-header">
+              <div><h3>Equipment reminders</h3><p>Small drop-offs and pickup dates to follow up on</p></div>
+              <span class="pill" id="equipmentReminderCount">0 open</span>
+            </div>
+            <div id="equipmentReminderList"></div>
+          </article>
+
           <article class="panel jobs-panel">
             <div class="panel-header">
               <div><h3>Active jobs</h3><p>Recent activity across your projects</p></div>
@@ -235,6 +243,6 @@
   <div class="toast" id="toast"><span>✓</span><div><strong id="toastTitle">Saved</strong><p id="toastMessage">Your changes were saved.</p></div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=20260615"></script>
-  <script src="app.js?v=20260621b"></script>
+  <script src="app.js?v=20260622a"></script>
 </body>
 </html>

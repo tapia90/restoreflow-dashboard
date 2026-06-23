@@ -213,6 +213,15 @@ tbody tr:hover { background: #f9fbff; }
 .todo-item span { font-size: 10px; color: #27344a; }
 .todo-item.done span { color: #8b96a6; text-decoration: line-through; }
 .todo-delete { border: 0; background: transparent; color: #a0a9b6; font-size: 16px; }.todo-delete:hover { color: var(--red); }
+.equipment-reminders-panel { margin: 14px 0; }
+.equipment-reminder-item { width: 100%; border: 0; border-top: 1px solid #edf0f4; background: white; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; text-align: left; padding: 12px 0; cursor: pointer; }
+.equipment-reminder-item:hover { background: #fbfcff; }
+.equipment-reminder-item strong, .equipment-reminder-item span { display: block; }.equipment-reminder-item strong { color: #263249; font-size: 10px; }.equipment-reminder-item span { color: #8a95a5; font-size: 9px; margin-top: 2px; }
+.equipment-reminder-item > div:last-child { text-align: right; }
+.reminder-status { display: inline-block !important; border-radius: 12px; padding: 4px 7px; font-size: 8px !important; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+.equipment-reminder-item.upcoming .reminder-status { background: #eef3fb; color: #52647e; }
+.equipment-reminder-item.duetoday .reminder-status { background: #fff7e6; color: #9a5c00; }
+.equipment-reminder-item.overdue .reminder-status { background: #fff0f0; color: var(--red); }
 .unit-table-summary { display: inline-flex; background: #eef3fb; color: #52647e; border-radius: 12px; padding: 5px 8px; font-size: 8px; font-weight: 700; }
 .unit-form { display: grid; grid-template-columns: 1fr 180px; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
 .unit-form label { color: #5e6a7c; font-size: 10px; font-weight: 600; }
@@ -245,6 +254,7 @@ tbody tr:hover { background: #f9fbff; }
 .equipment-log-item.carried { background: #fbfcff; margin: 0 -8px; padding: 11px 8px; border-radius: 9px; }
 .equipment-log-item strong, .equipment-log-item span { display: block; }.equipment-log-item strong { font-size: 10px; }.equipment-log-item span { color: #8a95a5; font-size: 9px; margin-top: 2px; }
 .equipment-log-item p { grid-column: 1/-1; color: #5f6b7d; font-size: 10px; margin: 0; }
+.pickup-reminder-line { color: #8a4a16 !important; background: #fff7ed; border-radius: 8px; padding: 7px 8px; font-weight: 700; }
 .equipment-counts { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
 .equipment-counts span { background: #eef3fb; color: #52647e; border-radius: 10px; padding: 4px 7px; font-size: 8px; font-weight: 700; }
 .note-form { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
