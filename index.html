@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260622c">
+  <link rel="stylesheet" href="styles.css?v=20260726k">
 </head>
 <body>
   <div class="auth-screen" id="authScreen">
@@ -29,6 +29,7 @@
         <div class="auth-error" id="authError"></div>
         <button class="btn primary auth-submit" id="authSubmit">Sign in</button>
         <button type="button" class="auth-switch" id="authSwitch">Create the owner account</button>
+        <button type="button" class="auth-reset" id="authReset">Forgot password? Send reset email</button>
       </form>
     </div>
   </div>
@@ -100,58 +101,94 @@
             <button data-view-target="jobs">Review items →</button>
           </div>
 
-          <div class="metric-grid">
-            <article class="metric-card">
-              <div class="metric-top"><span class="metric-icon blue">▣</span><span class="trend positive">↗ 8.2%</span></div>
-              <p>Active jobs</p><h2>12</h2><small>Across 7 project stages</small>
-            </article>
-            <article class="metric-card">
-              <div class="metric-top"><span class="metric-icon orange">◷</span><span class="trend warning">3 overdue</span></div>
-              <p>Open tasks</p><h2>38</h2><small>11 due this week</small>
-            </article>
-            <article class="metric-card">
-              <div class="metric-top"><span class="metric-icon green">✓</span><span class="trend neutral">Focus</span></div>
-              <p>To-dos to complete</p><h2>0</h2><small>Billing questions and follow-ups</small>
-            </article>
-          </div>
-
-          <div class="dashboard-grid">
-            <article class="panel pipeline-panel">
+          <div class="field-board">
+            <article class="panel jobs-panel field-jobs-panel">
               <div class="panel-header">
-                <div><h3>Job pipeline</h3><p>Current work by project stage</p></div>
-                <button class="text-btn" data-view-target="pipeline">View pipeline →</button>
+                <div><h3>Active jobs</h3><p>Newest jobs first, built for quick field review</p></div>
+                <div class="table-tools">
+                  <button class="btn secondary small">≡ Filter</button>
+                  <button class="text-btn" data-view-target="jobs">View all jobs →</button>
+                </div>
               </div>
-              <div class="pipeline-chart" id="pipelineChart"></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Job / Address</th><th>Created</th><th>Loss type</th><th>Stage</th><th>Units</th><th>Project director</th><th></th></tr></thead>
+                  <tbody id="activeJobsTable"></tbody>
+                </table>
+              </div>
             </article>
 
-            <article class="panel priorities-panel">
-              <div class="panel-header"><div><h3>To-dos to complete</h3><p>Billing questions and answers to follow up on</p></div><span class="pill">0 open</span></div>
-              <div id="priorityList"></div>
-            </article>
+            <aside class="field-side">
+              <article class="panel reminders-panel">
+                <div class="panel-header">
+                  <div><h3>Calendar reminders</h3><p>Return visits, pickups, calls, and no-access follow-ups</p></div>
+                  <span class="pill" id="calendarReminderCount">0 open</span>
+                </div>
+                <form class="reminder-form" id="reminderForm">
+                  <input name="title" required placeholder="Add reminder...">
+                  <input name="date" type="date" required>
+                  <select name="jobId"><option value="">No job link</option></select>
+                  <button class="btn primary small">Add</button>
+                </form>
+                <div id="calendarReminderList"></div>
+              </article>
+
+              <article class="panel equipment-reminders-panel">
+                <div class="panel-header">
+                  <div><h3>Equipment reminders</h3><p>Small drop-offs and pickup dates</p></div>
+                  <span class="pill" id="equipmentReminderCount">0 open</span>
+                </div>
+                <div id="equipmentReminderList"></div>
+              </article>
+
+              <article class="panel equipment-on-site-panel">
+                <div class="panel-header">
+                  <div><h3>Equipment on site</h3><p>Only jobs with active drying equipment show here</p></div>
+                  <span class="pill" id="equipmentOnSiteCount">0 jobs</span>
+                </div>
+                <div id="equipmentOnSiteList"></div>
+              </article>
+            </aside>
           </div>
 
-          <article class="panel equipment-reminders-panel">
+          <article class="panel service-calls-panel">
             <div class="panel-header">
-              <div><h3>Equipment reminders</h3><p>Small drop-offs and pickup dates to follow up on</p></div>
-              <span class="pill" id="equipmentReminderCount">0 open</span>
+              <div><h3>Daily job checkups</h3><p>Log equipment checkups, monitoring stops, and assessments even when the job is not assigned to you</p></div>
+              <span class="pill" id="serviceCallCount">0 today</span>
             </div>
-            <div id="equipmentReminderList"></div>
+            <form class="service-call-form" id="serviceCallForm">
+              <input name="date" type="date" required>
+              <input name="order" type="number" min="1" placeholder="#">
+              <input name="title" required placeholder="Job number, address, or property name">
+              <select name="type"><option>Equipment checkup</option><option>Monitoring</option><option>Assessment</option><option>Equipment pickup</option><option>Other</option></select>
+              <textarea name="notes" placeholder="Daily note, equipment used, access issue, next step..."></textarea>
+              <button class="btn primary small">Add checkup</button>
+            </form>
+            <div id="serviceCallList"></div>
           </article>
 
-          <article class="panel jobs-panel">
+          <article class="panel tm-packet-panel">
             <div class="panel-header">
-              <div><h3>Active jobs</h3><p>Recent activity across your projects</p></div>
-              <div class="table-tools">
-                <button class="btn secondary small">≡ Filter</button>
-                <button class="text-btn" data-view-target="jobs">View all jobs →</button>
-              </div>
+              <div><h3>T&M packet follow-ups</h3><p>Completed jobs that still need packet review, signatures, or billing handoff</p></div>
+              <span class="pill" id="tmPacketCount">0 open</span>
             </div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Job / Address</th><th>Created</th><th>Loss type</th><th>Stage</th><th>Units</th><th>Project director</th><th></th></tr></thead>
-                <tbody id="activeJobsTable"></tbody>
-              </table>
+            <div id="tmPacketList"></div>
+          </article>
+
+          <details class="panel priorities-panel todo-drawer">
+            <summary><span>To-dos to complete</span><strong class="pill">0 open</strong></summary>
+            <div class="todo-drawer-content">
+              <div class="panel-header"><div><h3>To-dos to complete</h3><p>Billing questions and answers to follow up on</p></div></div>
+              <div id="priorityList"></div>
             </div>
+          </details>
+
+          <article class="panel pipeline-panel compact-pipeline-panel">
+            <div class="panel-header">
+              <div><h3>Job pipeline</h3><p>Current work by project stage</p></div>
+              <button class="text-btn" data-view-target="pipeline">View pipeline →</button>
+            </div>
+            <div class="pipeline-chart" id="pipelineChart"></div>
           </article>
         </section>
 
@@ -245,6 +282,6 @@
   <div class="toast" id="toast"><span>✓</span><div><strong id="toastTitle">Saved</strong><p id="toastMessage">Your changes were saved.</p></div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=20260615"></script>
-  <script src="app.js?v=20260622c"></script>
+  <script src="app.js?v=20260726m"></script>
 </body>
 </html>

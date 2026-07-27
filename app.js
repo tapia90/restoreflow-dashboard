@@ -3,9 +3,14 @@ const stageColors = ["#e5a03f", "#3e7bdd", "#2c9a79", "#d56b35", "#8b98aa", "#76
 const stageMigration = {Inspection:"Assessment", Estimate:"Assessment", Final:"Mitigation Complete", Lost:"Lost Job"};
 const storageKey = "restoreflow-jobs-v2";
 const todoStorageKey = "restoreflow-todos-v1";
+const reminderStorageKey = "restoreflow-reminders-v1";
+const serviceCallStorageKey = "restoreflow-service-calls-v1";
 const legacyStorageKey = "restoreflow-jobs";
 const todoRecordId = "__restoreflow_todos__";
-const equipmentKeys = ["dehumidifiers","airMovers","axials","negativeAir"];
+const reminderRecordId = "__restoreflow_reminders__";
+const serviceCallRecordId = "__restoreflow_service_calls__";
+const equipmentKeys = ["dehumidifiers","airMovers","axials","negativeAir","hepaVacuums","extractors"];
+const carryForwardEquipmentKeys = ["dehumidifiers","airMovers","axials","negativeAir"];
 const unitStatuses = ["Needs access","No access","Demo needed","Under mitigation","Finished"];
 const defaultTasks = () => [
   {id:crypto.randomUUID(),title:"Initial assessment",assignee:"",due:"",done:true},
@@ -23,10 +28,13 @@ let activeJobId = null;
 let pendingDeleteId = null;
 let jobs = loadJobs();
 let todos = loadTodos();
+let reminders = loadReminders();
+let serviceCalls = loadServiceCalls();
 let cloudClient = null;
 let cloudUser = null;
 let authMode = "signin";
 let cloudReady = false;
+const authRedirectTo = "https://tapia90.github.io/restoreflow-dashboard/";
 
 function currentTimestamp() {
   return new Date().toISOString();
@@ -35,6 +43,22 @@ function currentTimestamp() {
 function touchJob(job) {
   job.updatedAt = currentTimestamp();
   return job;
+}
+
+function ensureTmPacketReminder(job) {
+  const title = `Complete T&M packet - ${job.jobNumber} · ${job.address}`;
+  const exists = reminders.some(reminder => reminder.title === title && !reminder.done);
+  if (!exists) {
+    reminders.push({
+      id:crypto.randomUUID(),
+      title,
+      date:new Date().toISOString().slice(0,10),
+      jobId:job.id,
+      done:false,
+      createdAt:currentTimestamp(),
+      updatedAt:currentTimestamp()
+    });
+  }
 }
 
 function loadJobs() {
@@ -49,6 +73,14 @@ function loadTodos() {
   return normalizeTodos(JSON.parse(localStorage.getItem(todoStorageKey) || "[]"));
 }
 
+function loadReminders() {
+  return normalizeReminders(JSON.parse(localStorage.getItem(reminderStorageKey) || "[]"));
+}
+
+function loadServiceCalls() {
+  return normalizeServiceCalls(JSON.parse(localStorage.getItem(serviceCallStorageKey) || "[]"));
+}
+
 function normalizeTodos(list) {
   return Array.isArray(list) ? list.map(todo => ({
     id:todo.id || crypto.randomUUID(),
@@ -57,6 +89,32 @@ function normalizeTodos(list) {
     createdAt:todo.createdAt || currentTimestamp(),
     updatedAt:todo.updatedAt || todo.createdAt || currentTimestamp()
   })).filter(todo => todo.title.trim()) : [];
+}
+
+function normalizeReminders(list) {
+  return Array.isArray(list) ? list.map(reminder => ({
+    id:reminder.id || crypto.randomUUID(),
+    title:reminder.title || "",
+    date:dateOnly(reminder.date || reminder.createdAt),
+    jobId:reminder.jobId || "",
+    done:Boolean(reminder.done),
+    createdAt:reminder.createdAt || currentTimestamp(),
+    updatedAt:reminder.updatedAt || reminder.createdAt || currentTimestamp()
+  })).filter(reminder => reminder.title.trim()) : [];
+}
+
+function normalizeServiceCalls(list) {
+  return Array.isArray(list) ? list.map(call => ({
+    id:call.id || crypto.randomUUID(),
+    date:dateOnly(call.date || call.createdAt),
+    order:Number(call.order) || "",
+    title:call.title || "",
+    type:call.type || "Equipment checkup",
+    notes:call.notes || "",
+    completed:Boolean(call.completed),
+    createdAt:call.createdAt || currentTimestamp(),
+    updatedAt:call.updatedAt || call.createdAt || currentTimestamp()
+  })).filter(call => call.title.trim()) : [];
 }
 
 function normalizeEquipmentLogs(logs) {
@@ -68,6 +126,8 @@ function normalizeEquipmentLogs(logs) {
     airMovers:Number(log.airMovers) || 0,
     axials:Number(log.axials) || 0,
     negativeAir:Number(log.negativeAir) || 0,
+    hepaVacuums:Number(log.hepaVacuums) || 0,
+    extractors:Number(log.extractors) || 0,
     notes:log.notes || "",
     pickupReminderDate:log.pickupReminderDate || "",
     carriedForward:Boolean(log.carriedForward),
@@ -134,6 +194,8 @@ async function saveJobs() {
   jobs.forEach(carryForwardEquipmentLogs);
   localStorage.setItem(storageKey, JSON.stringify(jobs));
   localStorage.setItem(todoStorageKey, JSON.stringify(todos));
+  localStorage.setItem(reminderStorageKey, JSON.stringify(reminders));
+  localStorage.setItem(serviceCallStorageKey, JSON.stringify(serviceCalls));
   renderOverview();
   updateJobCount();
   if (cloudReady && cloudUser) await syncJobsToCloud();
@@ -141,9 +203,13 @@ async function saveJobs() {
 
 async function syncJobsToCloud() {
   const todoUpdatedAt = todos.reduce((latest,todo) => new Date(todo.updatedAt) > new Date(latest) ? todo.updatedAt : latest, "1970-01-01T00:00:00.000Z");
+  const reminderUpdatedAt = reminders.reduce((latest,reminder) => new Date(reminder.updatedAt) > new Date(latest) ? reminder.updatedAt : latest, "1970-01-01T00:00:00.000Z");
+  const serviceCallUpdatedAt = serviceCalls.reduce((latest,call) => new Date(call.updatedAt) > new Date(latest) ? call.updatedAt : latest, "1970-01-01T00:00:00.000Z");
   const records = [
     ...jobs.map(job => ({id:job.id,user_id:cloudUser.id,data:job,updated_at:job.updatedAt || currentTimestamp()})),
-    {id:todoRecordId,user_id:cloudUser.id,data:{kind:"todos",items:todos},updated_at:todoUpdatedAt}
+    {id:todoRecordId,user_id:cloudUser.id,data:{kind:"todos",items:todos},updated_at:todoUpdatedAt},
+    {id:reminderRecordId,user_id:cloudUser.id,data:{kind:"reminders",items:reminders},updated_at:reminderUpdatedAt},
+    {id:serviceCallRecordId,user_id:cloudUser.id,data:{kind:"serviceCalls",items:serviceCalls},updated_at:serviceCallUpdatedAt}
   ];
   if (records.length) {
     const {error} = await cloudClient.from("jobs").upsert(records,{onConflict:"user_id,id"});
@@ -151,7 +217,7 @@ async function syncJobsToCloud() {
   }
   const {data:remote,error:readError} = await cloudClient.from("jobs").select("id");
   if (readError) return showToast("Cloud sync failed",readError.message);
-  const localIds = new Set([...jobs.map(job=>job.id), todoRecordId]);
+  const localIds = new Set([...jobs.map(job=>job.id), todoRecordId, reminderRecordId, serviceCallRecordId]);
   const stale = remote.filter(row=>!localIds.has(row.id)).map(row=>row.id);
   if (stale.length) await cloudClient.from("jobs").delete().in("id",stale);
   setSyncLabel("Saved to cloud");
@@ -180,16 +246,40 @@ function mergeTodos(localTodos, remoteTodos) {
   return [...merged.values()].sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
 
+function mergeReminders(localReminders, remoteReminders) {
+  const merged = new Map();
+  [...localReminders, ...remoteReminders].forEach(reminder => {
+    const existing = merged.get(reminder.id);
+    if (!existing || new Date(reminder.updatedAt) >= new Date(existing.updatedAt)) merged.set(reminder.id, reminder);
+  });
+  return [...merged.values()].sort((a,b) => compareDates(a.date,b.date) || new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+function mergeServiceCalls(localCalls, remoteCalls) {
+  const merged = new Map();
+  [...localCalls, ...remoteCalls].forEach(call => {
+    const existing = merged.get(call.id);
+    if (!existing || new Date(call.updatedAt) >= new Date(existing.updatedAt)) merged.set(call.id, call);
+  });
+  return [...merged.values()].sort((a,b) => compareDates(b.date,a.date) || (Number(a.order)||999) - (Number(b.order)||999));
+}
+
 async function loadCloudJobs() {
   const {data,error} = await cloudClient.from("jobs").select("data").order("updated_at",{ascending:false});
   if (error) throw error;
   if (data.length) {
     const remoteTodos = data.find(row => row.data?.kind === "todos")?.data?.items || [];
-    const remoteJobs = data.map(row=>row.data).filter(item => item && item.kind !== "todos");
+    const remoteReminders = data.find(row => row.data?.kind === "reminders")?.data?.items || [];
+    const remoteServiceCalls = data.find(row => row.data?.kind === "serviceCalls")?.data?.items || [];
+    const remoteJobs = data.map(row=>row.data).filter(item => item && item.kind !== "todos" && item.kind !== "reminders" && item.kind !== "serviceCalls");
     jobs = mergeJobs(normalizeJobs(jobs), normalizeJobs(remoteJobs));
     todos = mergeTodos(normalizeTodos(todos), normalizeTodos(remoteTodos));
+    reminders = mergeReminders(normalizeReminders(reminders), normalizeReminders(remoteReminders));
+    serviceCalls = mergeServiceCalls(normalizeServiceCalls(serviceCalls), normalizeServiceCalls(remoteServiceCalls));
     localStorage.setItem(storageKey,JSON.stringify(jobs));
     localStorage.setItem(todoStorageKey,JSON.stringify(todos));
+    localStorage.setItem(reminderStorageKey,JSON.stringify(reminders));
+    localStorage.setItem(serviceCallStorageKey,JSON.stringify(serviceCalls));
     await syncJobsToCloud();
   } else {
     await syncJobsToCloud();
@@ -212,14 +302,21 @@ const completedCount = job => job.tasks.filter(task => task.done).length;
 const sortedEquipmentLogs = job => [...(job.equipmentLogs || [])].sort((a,b) => compareDates(b.date,a.date) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 const latestEquipmentLog = job => sortedEquipmentLogs(job)[0];
 const equipmentTotal = log => equipmentKeys.reduce((sum,key) => sum + (Number(log?.[key]) || 0),0);
-const latestPickupReminder = job => sortedEquipmentLogs(job).find(log => !log.carriedForward && equipmentTotal(log) > 0 && log.pickupReminderDate)?.pickupReminderDate || "";
+const carryForwardEquipmentTotal = log => carryForwardEquipmentKeys.reduce((sum,key) => sum + (Number(log?.[key]) || 0),0);
+const equipmentLabels = {dehumidifiers:"Dehus", airMovers:"Air movers", axials:"Axials", negativeAir:"Negative air", hepaVacuums:"HEPA vacuums", extractors:"Extractors"};
+const latestPickupReminder = job => sortedEquipmentLogs(job).find(log => !log.carriedForward && carryForwardEquipmentTotal(log) > 0 && log.pickupReminderDate)?.pickupReminderDate || "";
 const pickupReminderStatus = date => {
   const today = new Date().toISOString().slice(0,10);
   if (compareDates(date,today) < 0) return "Overdue";
   if (compareDates(date,today) === 0) return "Due today";
   return "Upcoming";
 };
-const equipmentReminderJobs = () => sortedJobs(jobs).map(job => ({job,latest:latestEquipmentLog(job),pickupDate:latestPickupReminder(job)})).filter(item => item.pickupDate && equipmentTotal(item.latest) > 0);
+const equipmentReminderJobs = () => sortedJobs(jobs).map(job => ({job,latest:latestEquipmentLog(job),pickupDate:latestPickupReminder(job)})).filter(item => item.pickupDate && carryForwardEquipmentTotal(item.latest) > 0);
+const equipmentOnSiteJobs = () => sortedJobs(jobs).map(job => ({job,latest:latestEquipmentLog(job)})).filter(item => carryForwardEquipmentTotal(item.latest) > 0);
+const sortedReminders = () => [...reminders].sort((a,b) => compareDates(a.date,b.date) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+const reminderStatus = reminder => reminder.done ? "Done" : pickupReminderStatus(reminder.date);
+const tmPacketReminders = () => sortedReminders().filter(reminder => !reminder.done && reminder.title.startsWith("Complete T&M packet -"));
+const serviceCallsForDate = date => serviceCalls.filter(call => call.date === date).sort((a,b) => (Number(a.order)||999) - (Number(b.order)||999) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
 const sortedJobs = list => [...list].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 const unitSummary = job => {
   const total = job.units?.length || 0;
@@ -254,10 +351,55 @@ function carriedEquipmentLog(job, sourceLog, date) {
     airMovers:Number(sourceLog.airMovers) || 0,
     axials:Number(sourceLog.axials) || 0,
     negativeAir:Number(sourceLog.negativeAir) || 0,
+    hepaVacuums:0,
+    extractors:0,
     notes:"Carried forward from last saved equipment count.",
     carriedForward:true,
     createdAt:currentTimestamp()
   };
+}
+
+function parseEquipmentFromNote(text, job) {
+  const lower = text.toLowerCase();
+  const latest = latestEquipmentLog(job) || {};
+  const counts = {
+    dehumidifiers:Number(latest.dehumidifiers) || 0,
+    airMovers:Number(latest.airMovers) || 0,
+    axials:Number(latest.axials) || 0,
+    negativeAir:Number(latest.negativeAir) || 0,
+    hepaVacuums:Number(latest.hepaVacuums) || 0,
+    extractors:Number(latest.extractors) || 0
+  };
+  const found = new Set();
+  if (/(all\s+equipment|equipment)\s+(was\s+)?(removed|picked\s+up)|(?:removed|picked\s+up)\s+all\s+equipment/.test(lower)) {
+    equipmentKeys.forEach(key => {
+      counts[key] = 0;
+      found.add(key);
+    });
+  }
+  const patterns = [
+    ["dehumidifiers", /(\d+)\s*(dehus?|dehumidifiers?|dh\b)/gi],
+    ["airMovers", /(\d+)\s*(air\s*movers?|airmovers?|blowers?|fans?|ams?\b)/gi],
+    ["axials", /(\d+)\s*(axials?|axial\s*fans?|af\b)/gi],
+    ["negativeAir", /(\d+)\s*(negative\s*airs?|air\s*scrubbers?|scrubbers?|na\b)/gi],
+    ["hepaVacuums", /(\d+)\s*(hepa\s*vacs?|hepa\s*vacuums?|vacuums?|vacs?\b)/gi],
+    ["extractors", /(\d+)\s*(extractors?|extraction\s*machines?|water\s*extractors?)/gi]
+  ];
+  patterns.forEach(([key, pattern]) => {
+    [...text.matchAll(pattern)].forEach(match => {
+      const amount = Number(match[1]) || 0;
+      const before = lower.slice(Math.max(0,match.index - 32), match.index);
+      const isRemoval = /(remove|removed|pickup|picked\s+up|pull|pulled|take|took)\s*$/.test(before);
+      counts[key] = isRemoval ? Math.max(0, counts[key] - amount) : amount;
+      found.add(key);
+    });
+  });
+  if (!found.size) return null;
+  return counts;
+}
+
+function equipmentReviewText(counts) {
+  return equipmentKeys.map(key => `${equipmentLabels[key]}: ${counts[key]}`).join("\n");
 }
 
 function carryForwardEquipmentLogs(job) {
@@ -289,7 +431,7 @@ function carryForwardEquipmentLogs(job) {
     nextLogs.push(latestActual);
   });
 
-  if (latestActual && equipmentTotal(latestActual) > 0) {
+  if (latestActual && carryForwardEquipmentTotal(latestActual) > 0) {
     for (let day = addDays(latestActual.date,1); compareDates(day,today) <= 0; day = addDays(day,1)) {
       nextLogs.push(carriedEquipmentLog(job,latestActual,day));
     }
@@ -324,28 +466,25 @@ function jobRow(job,showMenu=false) {
 }
 
 function renderOverview() {
-  const openTasks = jobs.reduce((sum,job) => sum + job.tasks.filter(task => !task.done).length,0);
   const openTodos = todos.filter(todo => !todo.done).length;
   const reminders = equipmentReminderJobs();
+  const calendarOpen = remindersListOpenCount();
   const dueReminders = reminders.filter(item => pickupReminderStatus(item.pickupDate) !== "Upcoming").length;
-  const metrics = document.querySelectorAll(".metric-card");
-  metrics[0].querySelector("h2").textContent = jobs.length;
-  metrics[0].querySelector("small").textContent = `Across ${stages.length} project stages`;
-  metrics[1].querySelector("h2").textContent = openTasks;
-  metrics[1].querySelector(".trend").textContent = `${openTasks} open`;
-  metrics[2].querySelector("h2").textContent = openTodos;
-  metrics[2].querySelector("small").textContent = "Billing questions and follow-ups";
   document.querySelector(".attention-banner strong").textContent = `${openTodos} to-dos to complete`;
-  document.querySelector(".attention-banner span").textContent = dueReminders ? `${dueReminders} equipment pickup reminder${dueReminders===1?"":"s"} due now.` : (openTodos ? "Billing or office follow-ups need your attention." : "No billing follow-ups are currently open.");
+  document.querySelector(".attention-banner span").textContent = calendarOpen ? `${calendarOpen} calendar reminder${calendarOpen===1?"":"s"} open.` : (dueReminders ? `${dueReminders} equipment pickup reminder${dueReminders===1?"":"s"} due now.` : (openTodos ? "Billing or office follow-ups need your attention." : "No urgent follow-ups are currently open."));
 
   const counts = stages.map(stage => jobs.filter(job => job.stage === stage).length);
   document.querySelector("#pipelineChart").innerHTML = stages.map((stage,i) =>
     `<div class="chart-row"><span>${stage}</span><div class="chart-track"><div class="chart-bar" style="width:${Math.max(counts[i]*28,7)}%;background:${stageColors[i]}"></div></div><strong>${counts[i]}</strong></div>`
   ).join("");
 
+  renderCalendarReminders();
+  renderServiceCalls();
+  renderTmPacketReminders();
   renderTodos();
   renderEquipmentReminders(reminders);
-  document.querySelector("#activeJobsTable").innerHTML = sortedJobs(jobs).slice(0,5).map(job => jobRow(job,true)).join("");
+  renderEquipmentOnSite();
+  document.querySelector("#activeJobsTable").innerHTML = sortedJobs(jobs).slice(0,8).map(job => jobRow(job,true)).join("") || `<tr><td colspan="7" class="empty-state">No active jobs yet. Add your first job when you are ready.</td></tr>`;
   bindJobRows();
 }
 
@@ -372,7 +511,9 @@ function renderJobs() {
   bindJobRows();
 }
 
-function renderDetail(id) {
+function renderDetail(id, options = {}) {
+  const keepPosition = Boolean(options.keepPosition);
+  const currentPosition = window.scrollY;
   const job = jobs.find(item => item.id===id);
   if (!job) return showView("jobs");
   carryForwardEquipmentLogs(job);
@@ -430,7 +571,7 @@ function renderDetail(id) {
           </form>
         </article>
         <article class="panel">
-          <div class="panel-header"><div><h3>Equipment tracker</h3><p>Daily count of equipment left on site</p></div></div>
+          <div class="panel-header"><div><h3>Equipment tracker</h3><p>Daily count of equipment left on site. HEPA vacuums and extractors are same-day tools and do not carry forward.</p></div></div>
           ${equipmentSummary(job)}
           <form class="equipment-form" id="equipmentForm">
             <label>Date<input name="date" type="date" required value="${new Date().toISOString().slice(0,10)}"></label>
@@ -440,11 +581,20 @@ function renderDetail(id) {
             <label>Air movers<input name="airMovers" type="number" min="0" value="${Number(latestEquipment.airMovers)||0}"></label>
             <label>Axials<input name="axials" type="number" min="0" value="${Number(latestEquipment.axials)||0}"></label>
             <label>Negative air<input name="negativeAir" type="number" min="0" value="${Number(latestEquipment.negativeAir)||0}"></label>
+            <label>HEPA vacuums<input name="hepaVacuums" type="number" min="0" value="${Number(latestEquipment.hepaVacuums)||0}"></label>
+            <label>Extractors<input name="extractors" type="number" min="0" value="${Number(latestEquipment.extractors)||0}"></label>
             <label class="full">Notes<input name="notes" placeholder="Added/removed equipment, missing unit, picked up, etc."></label>
             <button class="btn primary full">Save daily equipment count</button>
           </form>
           <button class="btn danger-outline full-btn equipment-stop-btn" id="stopEquipmentBtn">Stop equipment charging - all equipment removed</button>
           <div class="equipment-log-list">${renderEquipmentLogs(job)}</div>
+        </article>
+        <article class="panel equipment-report-panel" id="equipmentReportPanel">
+          <div class="panel-header">
+            <div><h3>Equipment count report</h3><p>Printable day-by-day equipment count from job start to latest equipment entry</p></div>
+            <div class="report-actions"><button class="btn secondary small" id="emailEquipmentReportBtn">Email report</button><button class="btn secondary small" id="printEquipmentReportBtn">Print report</button></div>
+          </div>
+          ${renderEquipmentReport(job)}
         </article>
         <article class="panel">
           <div class="panel-header"><div><h3>Job notes</h3><p>Updates are saved with the project</p></div></div>
@@ -470,43 +620,68 @@ function renderDetail(id) {
   document.querySelector("#materialStatus").value = job.materialStatus;
   document.querySelector("#abatementStatus").value = job.abatementStatus;
   bindDetailActions(job);
-  showView("jobDetail");
+  showView("jobDetail",{scrollToTop:!keepPosition});
+  if (keepPosition) requestAnimationFrame(()=>window.scrollTo({top:currentPosition,behavior:"auto"}));
 }
 
 function bindDetailActions(job) {
+  const refreshDetailHere = () => renderDetail(job.id,{keepPosition:true});
   const progress = document.querySelector("#detailProgress");
   progress.addEventListener("input",()=>document.querySelector("#progressValue").textContent=`${progress.value}%`);
   document.querySelector("#saveWorkflowBtn").onclick = async () => {
     job.stage = document.querySelector("#detailStage").value;
     job.progress = Number(progress.value);
+    if (job.stage === "Mitigation Complete") ensureTmPacketReminder(job);
     touchJob(job);
-    await saveJobs(); renderDetail(job.id); showToast("Workflow saved","Stage and progress were updated.");
+    await saveJobs(); refreshDetailHere(); showToast("Workflow saved","Stage and progress were updated.");
   };
   document.querySelector("#saveSafetyBtn").onclick = async () => {
     job.materialStatus = document.querySelector("#materialStatus").value;
     job.abatementStatus = document.querySelector("#abatementStatus").value;
     if (job.materialStatus==="Hot" && job.abatementStatus!=="Completed") job.stage="Abatement";
     touchJob(job);
-    await saveJobs(); renderDetail(job.id); showToast("Safety status saved","Testing and abatement were updated.");
+    await saveJobs(); refreshDetailHere(); showToast("Safety status saved","Testing and abatement were updated.");
   };
   document.querySelector('[data-action="edit-job"]').onclick=()=>openJobModal(job);
   document.querySelector('[data-action="delete-job"]').onclick=()=>openDeleteConfirm(job.id);
   document.querySelector("#addTaskBtn").onclick=()=>openTaskModal(job.id);
+  document.querySelector("#printEquipmentReportBtn").onclick=()=>printEquipmentReport();
+  document.querySelector("#emailEquipmentReportBtn").onclick=()=>emailEquipmentReport(job);
   document.querySelectorAll("[data-task]").forEach(row => {
     row.querySelector('input[type="checkbox"]').onchange = event => {
       const task = job.tasks.find(item=>item.id===row.dataset.task);
-      task.done=event.target.checked; touchJob(job); saveJobs(); renderDetail(job.id);
+      task.done=event.target.checked; touchJob(job); saveJobs(); refreshDetailHere();
     };
     row.querySelector(".task-delete").onclick = () => {
-      job.tasks=job.tasks.filter(item=>item.id!==row.dataset.task); touchJob(job); saveJobs(); renderDetail(job.id); showToast("Task removed","The checklist was updated.");
+      job.tasks=job.tasks.filter(item=>item.id!==row.dataset.task); touchJob(job); saveJobs(); refreshDetailHere(); showToast("Task removed","The checklist was updated.");
     };
   });
-  document.querySelector("#noteForm").onsubmit = event => {
+  document.querySelector("#noteForm").onsubmit = async event => {
     event.preventDefault();
     const text=document.querySelector("#noteText").value.trim();
     if (!text) return;
+    const equipmentFromNote = parseEquipmentFromNote(text,job);
     job.notes.push({id:crypto.randomUUID(),text,createdAt:currentTimestamp()});
-    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Note added","The update was saved to this job.");
+    if (equipmentFromNote && window.confirm(`I found equipment in this note:\n\n${equipmentReviewText(equipmentFromNote)}\n\nSave this as today's equipment count?`)) {
+      const today = new Date().toISOString().slice(0,10);
+      job.equipmentLogs = (job.equipmentLogs || []).filter(log => log.date !== today);
+      job.equipmentLogs.unshift({
+        id:crypto.randomUUID(),
+        date:today,
+        technician:"From job note",
+        dehumidifiers:equipmentFromNote.dehumidifiers,
+        airMovers:equipmentFromNote.airMovers,
+        axials:equipmentFromNote.axials,
+        negativeAir:equipmentFromNote.negativeAir,
+        hepaVacuums:equipmentFromNote.hepaVacuums,
+        extractors:equipmentFromNote.extractors,
+        notes:`Saved from note: ${text}`,
+        pickupReminderDate:"",
+        carriedForward:false,
+        createdAt:currentTimestamp()
+      });
+    }
+    touchJob(job); await saveJobs(); refreshDetailHere(); showToast("Note added","The update was saved to this job.");
   };
   document.querySelector("#lostJobForm").onsubmit = event => {
     event.preventDefault();
@@ -522,7 +697,7 @@ function bindDetailActions(job) {
       job.lostDate = "";
       job.lostReason = "";
     }
-    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Job status saved","The lost job status was updated.");
+    touchJob(job); saveJobs(); refreshDetailHere(); showToast("Job status saved","The lost job status was updated.");
   };
   document.querySelector("#unitForm").onsubmit = event => {
     event.preventDefault();
@@ -536,7 +711,7 @@ function bindDetailActions(job) {
       createdAt:currentTimestamp(),
       updatedAt:currentTimestamp()
     });
-    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Unit added","The unit tracker was updated.");
+    touchJob(job); saveJobs(); refreshDetailHere(); showToast("Unit added","The unit tracker was updated.");
   };
   document.querySelectorAll("[data-unit-status]").forEach(select => {
     select.onchange = event => {
@@ -544,13 +719,13 @@ function bindDetailActions(job) {
       if (!unit) return;
       unit.status = event.target.value;
       unit.updatedAt = currentTimestamp();
-      touchJob(job); saveJobs(); renderDetail(job.id); showToast("Unit status saved",`${unit.name} is now marked ${unit.status}.`);
+      touchJob(job); saveJobs(); refreshDetailHere(); showToast("Unit status saved",`${unit.name} is now marked ${unit.status}.`);
     };
   });
   document.querySelectorAll("[data-unit-delete]").forEach(button => {
     button.onclick = () => {
       job.units = (job.units || []).filter(unit => unit.id !== button.dataset.unitDelete);
-      touchJob(job); saveJobs(); renderDetail(job.id); showToast("Unit removed","The unit tracker was updated.");
+      touchJob(job); saveJobs(); refreshDetailHere(); showToast("Unit removed","The unit tracker was updated.");
     };
   });
   document.querySelector("#equipmentForm").onsubmit = event => {
@@ -565,12 +740,14 @@ function bindDetailActions(job) {
       airMovers:Number(data.airMovers) || 0,
       axials:Number(data.axials) || 0,
       negativeAir:Number(data.negativeAir) || 0,
+      hepaVacuums:Number(data.hepaVacuums) || 0,
+      extractors:Number(data.extractors) || 0,
       notes:data.notes || "",
       pickupReminderDate:data.pickupReminderDate || "",
       carriedForward:false,
       createdAt:currentTimestamp()
     });
-    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Equipment count saved","The daily equipment count was saved.");
+    touchJob(job); saveJobs(); refreshDetailHere(); showToast("Equipment count saved","The daily equipment count was saved.");
   };
   document.querySelector("#stopEquipmentBtn").onclick = () => {
     const today = new Date().toISOString().slice(0,10);
@@ -583,12 +760,14 @@ function bindDetailActions(job) {
       airMovers:0,
       axials:0,
       negativeAir:0,
+      hepaVacuums:0,
+      extractors:0,
       notes:"All equipment removed. Stop charging equipment after this date.",
       pickupReminderDate:"",
       carriedForward:false,
       createdAt:currentTimestamp()
     });
-    touchJob(job); saveJobs(); renderDetail(job.id); showToast("Equipment charging stopped","All equipment was marked removed for today.");
+    touchJob(job); saveJobs(); refreshDetailHere(); showToast("Equipment charging stopped","All equipment was marked removed for today.");
   };
 }
 
@@ -605,13 +784,15 @@ function renderUnits(job) {
 function equipmentSummary(job) {
   const latest = latestEquipmentLog(job);
   if (!latest) return `<div class="equipment-summary empty">No equipment count has been recorded for this job yet.</div>`;
-  if (equipmentTotal(latest) === 0) return `<div class="equipment-summary removed">Equipment removed on ${formatDate(latest.date)}. Future days will not carry equipment forward.</div>`;
+  if (carryForwardEquipmentTotal(latest) === 0) return `<div class="equipment-summary removed">Carry-forward equipment removed on ${formatDate(latest.date)}. HEPA vacuums and extractors stay logged only on the day used.</div>`;
   return `<div class="equipment-summary">
     <div><span>Last count</span><strong>${formatDate(latest.date)}</strong></div>
     <div><span>Dehus</span><strong>${Number(latest.dehumidifiers)||0}</strong></div>
     <div><span>Air movers</span><strong>${Number(latest.airMovers)||0}</strong></div>
     <div><span>Axials</span><strong>${Number(latest.axials)||0}</strong></div>
     <div><span>Negative air</span><strong>${Number(latest.negativeAir)||0}</strong></div>
+    <div><span>HEPA vacs</span><strong>${Number(latest.hepaVacuums)||0}</strong></div>
+    <div><span>Extractors</span><strong>${Number(latest.extractors)||0}</strong></div>
   </div>`;
 }
 
@@ -619,14 +800,229 @@ function renderEquipmentLogs(job) {
   const logs = sortedEquipmentLogs(job);
   return logs.length ? logs.map(log => `<div class="equipment-log-item ${log.carriedForward?"carried":""}">
     <div><strong>${formatDate(log.date)}</strong><span>${log.carriedForward?"Auto carry-forward":escapeHtml(log.technician || "Technician not listed")}</span></div>
-    <div class="equipment-counts"><span>DH ${Number(log.dehumidifiers)||0}</span><span>AM ${Number(log.airMovers)||0}</span><span>AX ${Number(log.axials)||0}</span><span>NA ${Number(log.negativeAir)||0}</span></div>
+    <div class="equipment-counts"><span>DH ${Number(log.dehumidifiers)||0}</span><span>AM ${Number(log.airMovers)||0}</span><span>AX ${Number(log.axials)||0}</span><span>NA ${Number(log.negativeAir)||0}</span><span>HV ${Number(log.hepaVacuums)||0}</span><span>EX ${Number(log.extractors)||0}</span></div>
     ${log.pickupReminderDate?`<p class="pickup-reminder-line">Pickup reminder: ${formatDate(log.pickupReminderDate)}</p>`:""}
     ${log.carriedForward?`<p>This count was carried forward automatically from the last saved field count.</p>`:(log.notes?`<p>${escapeHtml(log.notes)}</p>`:"")}
   </div>`).join("") : `<div class="empty-state">No equipment history yet.</div>`;
 }
 
+function equipmentReportRows(job) {
+  return sortedEquipmentLogs(job).sort((a,b) => compareDates(a.date,b.date) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+}
+
+function equipmentReportTotals(rows) {
+  return rows.reduce((totals,log) => {
+    equipmentKeys.forEach(key => totals[key] += Number(log[key]) || 0);
+    return totals;
+  }, Object.fromEntries(equipmentKeys.map(key => [key,0])));
+}
+
+function renderEquipmentReport(job) {
+  const rows = equipmentReportRows(job);
+  if (!rows.length) return `<div class="empty-state">No equipment counts have been saved yet. Once counts are added, this report will be ready to print.</div>`;
+  const totals = equipmentReportTotals(rows);
+  const firstDate = rows[0].date || dateOnly(job.createdAt);
+  const lastDate = rows[rows.length - 1].date || firstDate;
+  return `<div class="equipment-report">
+    <div class="report-heading">
+      <div><span>Job number</span><strong>${escapeHtml(job.jobNumber)}</strong></div>
+      <div><span>Address</span><strong>${escapeHtml(job.address)}</strong></div>
+      <div><span>Report dates</span><strong>${formatDate(firstDate)} - ${formatDate(lastDate)}</strong></div>
+    </div>
+    <div class="report-table-wrap">
+      <table class="equipment-report-table">
+        <thead><tr><th>Date</th><th>DH</th><th>AM</th><th>AX</th><th>NA</th><th>HEPA</th><th>EXT</th><th>Source</th></tr></thead>
+        <tbody>
+          ${rows.map(log => `<tr>
+            <td>${formatDate(log.date)}</td>
+            <td>${Number(log.dehumidifiers)||0}</td>
+            <td>${Number(log.airMovers)||0}</td>
+            <td>${Number(log.axials)||0}</td>
+            <td>${Number(log.negativeAir)||0}</td>
+            <td>${Number(log.hepaVacuums)||0}</td>
+            <td>${Number(log.extractors)||0}</td>
+            <td>${log.carriedForward ? "Carry-forward" : escapeHtml(log.technician || "Field count")}</td>
+          </tr>`).join("")}
+        </tbody>
+        <tfoot><tr><th>Totals</th><th>${totals.dehumidifiers}</th><th>${totals.airMovers}</th><th>${totals.axials}</th><th>${totals.negativeAir}</th><th>${totals.hepaVacuums}</th><th>${totals.extractors}</th><th>Equipment-days</th></tr></tfoot>
+      </table>
+    </div>
+    <p class="report-note">DH = dehumidifiers, AM = air movers, AX = axials, NA = negative air, HEPA = HEPA vacuums, EXT = extractors. HEPA vacuums and extractors are same-day tools and do not carry forward.</p>
+  </div>`;
+}
+
+function equipmentReportEmailBody(job) {
+  const rows = equipmentReportRows(job);
+  if (!rows.length) return "";
+  const totals = equipmentReportTotals(rows);
+  const firstDate = rows[0].date || dateOnly(job.createdAt);
+  const lastDate = rows[rows.length - 1].date || firstDate;
+  const lines = [
+    "Equipment Count Report",
+    "",
+    `Job number: ${job.jobNumber}`,
+    `Customer: ${job.customer}`,
+    `Address: ${job.address}`,
+    `Report dates: ${formatDate(firstDate)} - ${formatDate(lastDate)}`,
+    "",
+    "Date | DH | AM | AX | NA | HEPA | EXT | Source",
+    ...rows.map(log => `${formatDate(log.date)} | ${Number(log.dehumidifiers)||0} | ${Number(log.airMovers)||0} | ${Number(log.axials)||0} | ${Number(log.negativeAir)||0} | ${Number(log.hepaVacuums)||0} | ${Number(log.extractors)||0} | ${log.carriedForward ? "Carry-forward" : (log.technician || "Field count")}`),
+    "",
+    `Totals | ${totals.dehumidifiers} | ${totals.airMovers} | ${totals.axials} | ${totals.negativeAir} | ${totals.hepaVacuums} | ${totals.extractors} | Equipment-days`,
+    "",
+    "Legend: DH = dehumidifiers, AM = air movers, AX = axials, NA = negative air, HEPA = HEPA vacuums, EXT = extractors.",
+    "Note: HEPA vacuums and extractors are same-day tools and do not carry forward."
+  ];
+  return lines.join("\n");
+}
+
+function emailEquipmentReport(job) {
+  const body = equipmentReportEmailBody(job);
+  if (!body) return showToast("No equipment report","Add equipment counts before emailing a report.");
+  const subject = `Equipment Count Report - ${job.jobNumber}`;
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function printEquipmentReport() {
+  document.body.classList.add("printing-equipment-report");
+  window.print();
+  setTimeout(()=>document.body.classList.remove("printing-equipment-report"),500);
+}
+
 function bindJobRows() {
   document.querySelectorAll("[data-job]").forEach(row=>row.onclick=()=>renderDetail(row.dataset.job));
+}
+
+function remindersListOpenCount() {
+  return reminders.filter(reminder => !reminder.done).length;
+}
+
+function renderCalendarReminders() {
+  const form = document.querySelector("#reminderForm");
+  if (!form) return;
+  const jobSelect = form.elements.jobId;
+  const currentValue = jobSelect.value;
+  jobSelect.innerHTML = `<option value="">No job link</option>${sortedJobs(jobs).map(job => `<option value="${escapeAttribute(job.id)}">${escapeHtml(job.jobNumber)} · ${escapeHtml(job.address)}</option>`).join("")}`;
+  jobSelect.value = currentValue;
+  if (!form.elements.date.value) form.elements.date.value = new Date().toISOString().slice(0,10);
+  document.querySelector("#calendarReminderCount").textContent = `${remindersListOpenCount()} open`;
+  const visibleReminders = sortedReminders().filter(reminder => !reminder.done || compareDates(reminder.date,new Date().toISOString().slice(0,10)) >= 0).slice(0,8);
+  document.querySelector("#calendarReminderList").innerHTML = visibleReminders.length ? visibleReminders.map(reminder => {
+    const job = jobs.find(item => item.id === reminder.jobId);
+    const status = reminderStatus(reminder);
+    return `<div class="calendar-reminder-item ${slug(status)}" data-reminder="${reminder.id}">
+      <input type="checkbox" ${reminder.done?"checked":""} aria-label="Complete ${escapeHtml(reminder.title)}">
+      <button type="button" class="calendar-reminder-main ${job?"has-job":""}" ${job?`data-job="${escapeAttribute(job.id)}"`:""}>
+        <strong>${escapeHtml(reminder.title)}</strong>
+        <span>${formatDate(reminder.date)}${job?` · ${escapeHtml(job.jobNumber)} · ${escapeHtml(job.address)}`:""}</span>
+      </button>
+      <span class="reminder-status">${status}</span>
+      <button class="todo-delete" aria-label="Delete reminder">×</button>
+    </div>`;
+  }).join("") : `<div class="empty-state">No calendar reminders yet. Add return visits, pickups, calls, or no-access follow-ups here.</div>`;
+  form.onsubmit = event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(form));
+    if (!data.title.trim()) return;
+    reminders.push({id:crypto.randomUUID(),title:data.title.trim(),date:data.date,jobId:data.jobId || "",done:false,createdAt:currentTimestamp(),updatedAt:currentTimestamp()});
+    form.reset();
+    saveJobs(); showToast("Reminder added","Your calendar reminder was saved.");
+  };
+  document.querySelectorAll("[data-reminder]").forEach(row => {
+    const reminder = reminders.find(item => item.id === row.dataset.reminder);
+    row.querySelector('input[type="checkbox"]').onchange = event => {
+      reminder.done = event.target.checked;
+      reminder.updatedAt = currentTimestamp();
+      saveJobs();
+    };
+    row.querySelector(".todo-delete").onclick = () => {
+      reminders = reminders.filter(item => item.id !== row.dataset.reminder);
+      saveJobs(); showToast("Reminder removed","Your calendar reminder list was updated.");
+    };
+  });
+  document.querySelectorAll(".calendar-reminder-main[data-job]").forEach(button => {
+    button.onclick = () => renderDetail(button.dataset.job);
+  });
+}
+
+function renderServiceCalls() {
+  const form = document.querySelector("#serviceCallForm");
+  if (!form) return;
+  if (!form.elements.date.value) form.elements.date.value = new Date().toISOString().slice(0,10);
+  const activeDate = form.elements.date.value;
+  const calls = serviceCallsForDate(activeDate);
+  document.querySelector("#serviceCallCount").textContent = `${calls.length} on ${formatDate(activeDate)}`;
+  document.querySelector("#serviceCallList").innerHTML = calls.length ? calls.map(call => `
+    <div class="service-call-item ${call.completed?"completed":""}" data-service-call="${call.id}">
+      <div class="service-call-order">${escapeHtml(call.order || "•")}</div>
+      <div class="service-call-main">
+        <strong>${escapeHtml(call.title)}</strong>
+        <span>${escapeHtml(call.type)}${call.notes?` · ${escapeHtml(call.notes)}`:""}</span>
+      </div>
+      <button class="btn secondary small service-complete-btn">${call.completed?"Checkup done":"Mark checkup done"}</button>
+      <button class="todo-delete" aria-label="Delete service call">×</button>
+    </div>
+  `).join("") : `<div class="empty-state">No job checkups logged for this date. Add your route stops here in the order you plan to run them.</div>`;
+  form.onsubmit = event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(form));
+    if (!data.title.trim()) return;
+    serviceCalls.push({
+      id:crypto.randomUUID(),
+      date:data.date,
+      order:Number(data.order) || "",
+      title:data.title.trim(),
+      type:data.type || "Equipment checkup",
+      notes:data.notes || "",
+      completed:false,
+      createdAt:currentTimestamp(),
+      updatedAt:currentTimestamp()
+    });
+    form.reset();
+    form.elements.date.value = data.date;
+    saveJobs(); showToast("Checkup added","Your daily route stop was saved.");
+  };
+  form.elements.date.onchange = renderServiceCalls;
+  document.querySelectorAll("[data-service-call]").forEach(row => {
+    const call = serviceCalls.find(item => item.id === row.dataset.serviceCall);
+    row.querySelector(".service-complete-btn").onclick = () => {
+      call.completed = true;
+      call.updatedAt = currentTimestamp();
+      saveJobs(); showToast("Checkup completed","This route stop was marked done.");
+    };
+    row.querySelector(".todo-delete").onclick = () => {
+      serviceCalls = serviceCalls.filter(item => item.id !== row.dataset.serviceCall);
+      saveJobs(); showToast("Checkup removed","Your daily route list was updated.");
+    };
+  });
+}
+
+function renderTmPacketReminders() {
+  if (!document.querySelector("#tmPacketList")) return;
+  const items = tmPacketReminders();
+  document.querySelector("#tmPacketCount").textContent = `${items.length} open`;
+  document.querySelector("#tmPacketList").innerHTML = items.length ? items.map(reminder => {
+    const job = jobs.find(item => item.id === reminder.jobId);
+    return `<div class="tm-packet-item" data-reminder="${reminder.id}">
+      <input type="checkbox" aria-label="Complete ${escapeHtml(reminder.title)}">
+      <button type="button" class="tm-packet-main ${job?"has-job":""}" ${job?`data-job="${escapeAttribute(job.id)}"`:""}>
+        <strong>${escapeHtml(reminder.title.replace("Complete T&M packet - ",""))}</strong>
+        <span>Due ${formatDate(reminder.date)}${job?` · ${escapeHtml(job.stage)}`:""}</span>
+      </button>
+      <span class="reminder-status ${slug(pickupReminderStatus(reminder.date))}">${pickupReminderStatus(reminder.date)}</span>
+    </div>`;
+  }).join("") : `<div class="empty-state">No T&M packets waiting right now. Completed mitigation jobs will show here automatically.</div>`;
+  document.querySelectorAll("#tmPacketList [data-reminder]").forEach(row => {
+    const reminder = reminders.find(item => item.id === row.dataset.reminder);
+    row.querySelector('input[type="checkbox"]').onchange = event => {
+      reminder.done = event.target.checked;
+      reminder.updatedAt = currentTimestamp();
+      saveJobs(); showToast("T&M packet cleared","The packet follow-up was marked complete.");
+    };
+  });
+  document.querySelectorAll(".tm-packet-main[data-job]").forEach(button => {
+    button.onclick = () => renderDetail(button.dataset.job);
+  });
 }
 
 function renderTodos() {
@@ -673,13 +1069,36 @@ function renderEquipmentReminders(reminders = equipmentReminderJobs()) {
   document.querySelector("#equipmentReminderList").innerHTML = openCount ? reminders.map(({job,latest,pickupDate}) => {
     const status = pickupReminderStatus(pickupDate);
     return `<button class="equipment-reminder-item ${slug(status)}" data-job="${job.id}">
-      <div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(job.address)}</strong><span>${equipmentTotal(latest)} item${equipmentTotal(latest)===1?"":"s"} on site</span></div>
+      <div><strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(job.address)}</strong><span>${carryForwardEquipmentTotal(latest)} carry-forward item${carryForwardEquipmentTotal(latest)===1?"":"s"} on site</span></div>
       <div><span class="reminder-status">${status}</span><strong>${formatDate(pickupDate)}</strong></div>
     </button>`;
   }).join("") : `<div class="empty-state">No equipment pickup reminders right now.</div>`;
 }
 
-function showView(name) {
+function renderEquipmentOnSite(items = equipmentOnSiteJobs()) {
+  if (!document.querySelector("#equipmentOnSiteList")) return;
+  document.querySelector("#equipmentOnSiteCount").textContent = `${items.length} job${items.length===1?"":"s"}`;
+  document.querySelector("#equipmentOnSiteList").innerHTML = items.length ? items.map(({job,latest}) => `
+    <button class="equipment-site-item" data-job="${job.id}">
+      <div>
+        <strong>${escapeHtml(job.jobNumber)} · ${escapeHtml(job.address)}</strong>
+        <span>${carryForwardEquipmentTotal(latest)} item${carryForwardEquipmentTotal(latest)===1?"":"s"} currently on site</span>
+      </div>
+      <div class="equipment-counts equipment-site-counts">
+        <span>DH ${Number(latest.dehumidifiers)||0}</span>
+        <span>AM ${Number(latest.airMovers)||0}</span>
+        <span>AX ${Number(latest.axials)||0}</span>
+        <span>NA ${Number(latest.negativeAir)||0}</span>
+      </div>
+    </button>
+  `).join("") : `<div class="empty-state">No jobs currently show drying equipment on site.</div>`;
+  document.querySelectorAll("#equipmentOnSiteList [data-job]").forEach(button => {
+    button.onclick = () => renderDetail(button.dataset.job);
+  });
+}
+
+function showView(name, options = {}) {
+  const scrollToTop = options.scrollToTop !== false;
   document.querySelectorAll(".view").forEach(view=>view.classList.remove("active"));
   const known=["overview","pipeline","jobs","jobDetail"];
   const target=known.includes(name)?document.querySelector(`#${name}View`):document.querySelector("#placeholderView");
@@ -688,7 +1107,7 @@ function showView(name) {
   if (!known.includes(name)) document.querySelector("#placeholderTitle").textContent=name[0].toUpperCase()+name.slice(1);
   if (name==="pipeline") renderPipeline();
   if (name==="jobs") renderJobs();
-  window.scrollTo({top:0,behavior:"smooth"});
+  if (scrollToTop) window.scrollTo({top:0,behavior:"smooth"});
 }
 
 const jobModal=document.querySelector("#jobModal");
@@ -730,7 +1149,7 @@ jobForm.onsubmit=event=>{
   if (editing) {
     Object.assign(editing,{customer:data.customer,address:data.address,unitSuite:data.unitSuite||"",contactName:data.contactName||"",contactPhone:data.contactPhone||"",type:data.type,projectDirector:data.projectDirector||"",stage:data.stage,priority:data.priority,insurer:data.insurer||"Pending",documentFolder:data.documentFolder||"",jobNumber});
     touchJob(editing);
-    closeJobModal();saveJobs();renderDetail(editing.id);showToast("Job updated","Your changes were saved.");
+    closeJobModal();saveJobs();renderDetail(editing.id,{keepPosition:true});showToast("Job updated","Your changes were saved.");
   } else {
     const createdAt=currentTimestamp();
     const starterUnit = data.unitSuite ? [{id:crypto.randomUUID(),name:data.unitSuite,status:"Needs access",notes:"",createdAt,updatedAt:createdAt}] : [];
@@ -746,7 +1165,7 @@ document.querySelector("#newTaskForm").onsubmit=event=>{
   if (!job) return;
   job.tasks.push({id:crypto.randomUUID(),title:data.title,assignee:"",due:"",done:false});
   touchJob(job);
-  closeTaskModal();saveJobs();renderDetail(job.id);showToast("Task added","The checklist was updated.");
+  closeTaskModal();saveJobs();renderDetail(job.id,{keepPosition:true});showToast("Task added","The checklist was updated.");
 };
 
 function openDeleteConfirm(id){pendingDeleteId=id;document.querySelector("#confirmBar").classList.add("show");}
@@ -798,8 +1217,19 @@ async function initializeCloud() {
   if (session?.user) await enterCloudApp(session.user);
   else showAuth();
   cloudClient.auth.onAuthStateChange(async(event,session)=>{
+    if (event==="PASSWORD_RECOVERY") await completePasswordReset();
     if (event==="SIGNED_OUT"){cloudUser=null;cloudReady=false;showAuth();}
   });
+}
+
+async function completePasswordReset() {
+  const newPassword = window.prompt("Enter your new RestoreFlow password. Use at least 8 characters.");
+  if (!newPassword) return setAuthError("Password reset opened, but no new password was entered.");
+  if (newPassword.length < 8) return setAuthError("Password must be at least 8 characters.");
+  const {error}=await cloudClient.auth.updateUser({password:newPassword});
+  if (error) return setAuthError(error.message);
+  hideAuth();
+  showToast("Password updated","Your new password was saved.");
 }
 
 async function enterCloudApp(user) {
@@ -821,16 +1251,26 @@ document.querySelector("#authSwitch").onclick=()=>{
   document.querySelector("#authCopy").textContent=signup?"Create the secure account you will use on every device.":"Use the same account on your computer, iPad, and phone.";
   document.querySelector("#authSubmit").textContent=signup?"Create account":"Sign in";
   document.querySelector("#authSwitch").textContent=signup?"Already have an account? Sign in":"Create the owner account";
+  document.querySelector("#authReset").style.display=signup?"none":"block";
   setAuthError();
+};
+document.querySelector("#authReset").onclick=async()=>{
+  setAuthError();
+  const email=document.querySelector("#authEmail").value.trim();
+  if (!email) return setAuthError("Enter your email first, then tap reset password.");
+  document.querySelector("#authReset").disabled=true;
+  const {error}=await cloudClient.auth.resetPasswordForEmail(email,{redirectTo:authRedirectTo});
+  document.querySelector("#authReset").disabled=false;
+  if (error) return setAuthError(error.message);
+  setAuthError("Reset email sent. Check your inbox, then follow the link to create a new password.");
 };
 document.querySelector("#authForm").onsubmit=async event=>{
   event.preventDefault(); setAuthError();
   const email=document.querySelector("#authEmail").value.trim();
   const password=document.querySelector("#authPassword").value;
-  const redirectTo="https://tapia90.github.io/restoreflow-dashboard/";
   document.querySelector("#authSubmit").disabled=true;
   const result=authMode==="signup"
-    ? await cloudClient.auth.signUp({email,password,options:{emailRedirectTo:redirectTo}})
+    ? await cloudClient.auth.signUp({email,password,options:{emailRedirectTo:authRedirectTo}})
     : await cloudClient.auth.signInWithPassword({email,password});
   document.querySelector("#authSubmit").disabled=false;
   if (result.error) return setAuthError(result.error.message);
