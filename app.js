@@ -1222,17 +1222,18 @@ if (newTaskForm) newTaskForm.onsubmit=event=>{
   closeTaskModal();saveJobs();renderDetail(job.id,{keepPosition:true});showToast("Task added","The checklist was updated.");
 };
 
-function openDeleteConfirm(id){pendingDeleteId=id;document.querySelector("#confirmBar").classList.add("show");}
-function closeDeleteConfirm(){pendingDeleteId=null;document.querySelector("#confirmBar").classList.remove("show");}
+function openDeleteConfirm(id){pendingDeleteId=id;$("#confirmBar")?.classList.add("show");}
+function closeDeleteConfirm(){pendingDeleteId=null;$("#confirmBar")?.classList.remove("show");}
 bindClick("#confirmDeleteBtn", ()=>{
   jobs=jobs.filter(job=>job.id!==pendingDeleteId);closeDeleteConfirm();saveJobs();showView("jobs");showToast("Job deleted","The project was removed.");
 });
 bindClick("#cancelDeleteBtn", closeDeleteConfirm);
 
-document.querySelectorAll("[data-view]").forEach(button=>button.onclick=()=>showView(button.dataset.view));
-document.querySelectorAll("[data-view-target]").forEach(button=>button.onclick=()=>showView(button.dataset.viewTarget));
+$("[data-view]");
+$$("[data-view]").forEach(button=>button.onclick=()=>showView(button.dataset.view));
+$$("[data-view-target]").forEach(button=>button.onclick=()=>showView(button.dataset.viewTarget));
 bindClick("#newJobBtn", ()=>openJobModal());
-document.querySelectorAll(".new-job-trigger").forEach(button=>button.onclick=()=>openJobModal());
+$$(".new-job-trigger").forEach(button=>button.onclick=()=>openJobModal());
 bindClick("#jobModal .modal-close", closeJobModal);
 bindClick(".modal-cancel", closeJobModal);
 bindClick(".task-modal-close", closeTaskModal);
@@ -1240,10 +1241,15 @@ bindClick(".task-modal-cancel", closeTaskModal);
 if (jobModal) jobModal.onclick=event=>{if(event.target===jobModal)closeJobModal();};
 if (taskModal) taskModal.onclick=event=>{if(event.target===taskModal)closeTaskModal();};
 
-document.querySelector("#stageFilter").innerHTML+=stages.map(stage=>`<option>${stage}</option>`).join("");
-["jobSearch","stageFilter","typeFilter"].forEach(id=>document.querySelector(`#${id}`).addEventListener(id==="jobSearch"?"input":"change",renderJobs));
-document.querySelector("#globalSearch").onkeydown=event=>{
-  if(event.key==="Enter"){showView("jobs");document.querySelector("#jobSearch").value=event.target.value;renderJobs();}
+const stageFilter = $("#stageFilter");
+if (stageFilter) stageFilter.innerHTML+=stages.map(stage=>`<option>${stage}</option>`).join("");
+["jobSearch","stageFilter","typeFilter"].forEach(id=>{
+  const element = $(`#${id}`);
+  if (element) element.addEventListener(id==="jobSearch"?"input":"change",renderJobs);
+});
+const globalSearch = $("#globalSearch");
+if (globalSearch) globalSearch.onkeydown=event=>{
+  if(event.key==="Enter"){showView("jobs");const jobSearch = $("#jobSearch"); if (jobSearch) jobSearch.value=event.target.value;renderJobs();}
 };
 bindClick("#exportBtn", ()=>{
   const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),jobs},null,2)],{type:"application/json"});
@@ -1255,15 +1261,16 @@ function cloudConfigured() {
   return Boolean(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
 }
 
-function showAuth() { document.querySelector("#authScreen").classList.add("visible"); }
-function hideAuth() { document.querySelector("#authScreen").classList.remove("visible"); }
-function setAuthError(message="") { document.querySelector("#authError").textContent=message; }
+function showAuth() { $("#authScreen")?.classList.add("visible"); }
+function hideAuth() { $("#authScreen")?.classList.remove("visible"); }
+function setAuthError(message="") { const authError = $("#authError"); if (authError) authError.textContent=message; }
 
 async function initializeCloud() {
   if (!cloudConfigured()) {
     showAuth();
-    document.querySelector("#cloudSetupNotice").classList.add("visible");
-    document.querySelector("#authForm").style.display="none";
+    $("#cloudSetupNotice")?.classList.add("visible");
+    const authForm = $("#authForm");
+    if (authForm) authForm.style.display="none";
     return;
   }
   cloudClient=window.supabase.createClient(window.RESTOREFLOW_CONFIG.supabaseUrl,window.RESTOREFLOW_CONFIG.supabaseAnonKey);
@@ -1288,7 +1295,8 @@ async function completePasswordReset() {
 
 async function enterCloudApp(user) {
   cloudUser=user;
-  document.querySelector("#profileName").textContent=user.email.split("@")[0];
+  const profileName = $("#profileName");
+  if (profileName) profileName.textContent=user.email.split("@")[0];
   setSyncLabel("Syncing");
   try {
     await loadCloudJobs();
@@ -1298,42 +1306,50 @@ async function enterCloudApp(user) {
   }
 }
 
-document.querySelector("#authSwitch").onclick=()=>{
+bindClick("#authSwitch", ()=>{
   authMode=authMode==="signin"?"signup":"signin";
   const signup=authMode==="signup";
-  document.querySelector("#authTitle").textContent=signup?"Create owner account":"Sign in";
-  document.querySelector("#authCopy").textContent=signup?"Create the secure account you will use on every device.":"Use the same account on your computer, iPad, and phone.";
-  document.querySelector("#authSubmit").textContent=signup?"Create account":"Sign in";
-  document.querySelector("#authSwitch").textContent=signup?"Already have an account? Sign in":"Create the owner account";
-  document.querySelector("#authReset").style.display=signup?"none":"block";
+  const authTitle = $("#authTitle");
+  const authCopy = $("#authCopy");
+  const authSubmit = $("#authSubmit");
+  const authSwitch = $("#authSwitch");
+  const authReset = $("#authReset");
+  if (authTitle) authTitle.textContent=signup?"Create owner account":"Sign in";
+  if (authCopy) authCopy.textContent=signup?"Create the secure account you will use on every device.":"Use the same account on your computer, iPad, and phone.";
+  if (authSubmit) authSubmit.textContent=signup?"Create account":"Sign in";
+  if (authSwitch) authSwitch.textContent=signup?"Already have an account? Sign in":"Create the owner account";
+  if (authReset) authReset.style.display=signup?"none":"block";
   setAuthError();
-};
-document.querySelector("#authReset").onclick=async()=>{
+});
+bindClick("#authReset", async()=>{
   setAuthError();
-  const email=document.querySelector("#authEmail").value.trim();
+  const email=$("#authEmail")?.value.trim() || "";
   if (!email) return setAuthError("Enter your email first, then tap reset password.");
-  document.querySelector("#authReset").disabled=true;
+  const authReset = $("#authReset");
+  if (authReset) authReset.disabled=true;
   const {error}=await cloudClient.auth.resetPasswordForEmail(email,{redirectTo:authRedirectTo});
-  document.querySelector("#authReset").disabled=false;
+  if (authReset) authReset.disabled=false;
   if (error) return setAuthError(error.message);
   setAuthError("Reset email sent. Check your inbox, then follow the link to create a new password.");
-};
-document.querySelector("#authForm").onsubmit=async event=>{
+});
+const authForm = $("#authForm");
+if (authForm) authForm.onsubmit=async event=>{
   event.preventDefault(); setAuthError();
-  const email=document.querySelector("#authEmail").value.trim();
-  const password=document.querySelector("#authPassword").value;
-  document.querySelector("#authSubmit").disabled=true;
+  const email=$("#authEmail")?.value.trim() || "";
+  const password=$("#authPassword")?.value || "";
+  const authSubmit = $("#authSubmit");
+  if (authSubmit) authSubmit.disabled=true;
   const result=authMode==="signup"
     ? await cloudClient.auth.signUp({email,password,options:{emailRedirectTo:authRedirectTo}})
     : await cloudClient.auth.signInWithPassword({email,password});
-  document.querySelector("#authSubmit").disabled=false;
+  if (authSubmit) authSubmit.disabled=false;
   if (result.error) return setAuthError(result.error.message);
   if (result.data.session) await enterCloudApp(result.data.user);
   else setAuthError("Check your email to confirm the account, then sign in.");
 };
-document.querySelector("#signOutBtn").onclick=()=>cloudClient?.auth.signOut();
+bindClick("#signOutBtn", ()=>cloudClient?.auth.signOut());
 document.addEventListener("keydown",event=>{
-  if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();document.querySelector("#globalSearch").focus();}
+  if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();$("#globalSearch")?.focus();}
   if(event.key==="Escape"){closeJobModal();closeTaskModal();closeDeleteConfirm();}
 });
 
