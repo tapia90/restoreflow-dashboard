@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260726k">
+  <link rel="stylesheet" href="styles.css?v=20260727a">
 </head>
 <body>
   <div class="auth-screen" id="authScreen">
@@ -101,6 +101,22 @@
             <button data-view-target="jobs">Review items →</button>
           </div>
 
+          <article class="panel route-panel">
+            <div class="panel-header">
+              <div><h3>Today’s route</h3><p>Number your stops in the order you plan to run them, then mark each one as you move through the day</p></div>
+              <span class="pill" id="serviceCallCount">0 today</span>
+            </div>
+            <form class="service-call-form route-form" id="serviceCallForm">
+              <input name="date" type="date" required>
+              <input name="order" type="number" min="1" placeholder="#">
+              <input name="title" required placeholder="Job number, address, or property name">
+              <select name="type"><option>Equipment checkup</option><option>Monitoring</option><option>Assessment</option><option>Equipment pickup</option><option>Other</option></select>
+              <textarea name="notes" placeholder="Daily note, equipment count, access issue, next step..."></textarea>
+              <button class="btn primary small">Add route stop</button>
+            </form>
+            <div id="serviceCallList"></div>
+          </article>
+
           <div class="field-board">
             <article class="panel jobs-panel field-jobs-panel">
               <div class="panel-header">
@@ -150,22 +166,6 @@
               </article>
             </aside>
           </div>
-
-          <article class="panel service-calls-panel">
-            <div class="panel-header">
-              <div><h3>Daily job checkups</h3><p>Log equipment checkups, monitoring stops, and assessments even when the job is not assigned to you</p></div>
-              <span class="pill" id="serviceCallCount">0 today</span>
-            </div>
-            <form class="service-call-form" id="serviceCallForm">
-              <input name="date" type="date" required>
-              <input name="order" type="number" min="1" placeholder="#">
-              <input name="title" required placeholder="Job number, address, or property name">
-              <select name="type"><option>Equipment checkup</option><option>Monitoring</option><option>Assessment</option><option>Equipment pickup</option><option>Other</option></select>
-              <textarea name="notes" placeholder="Daily note, equipment used, access issue, next step..."></textarea>
-              <button class="btn primary small">Add checkup</button>
-            </form>
-            <div id="serviceCallList"></div>
-          </article>
 
           <article class="panel tm-packet-panel">
             <div class="panel-header">
@@ -282,6 +282,6 @@
   <div class="toast" id="toast"><span>✓</span><div><strong id="toastTitle">Saved</strong><p id="toastMessage">Your changes were saved.</p></div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=20260615"></script>
-  <script src="app.js?v=20260726m"></script>
+  <script src="app.js?v=20260727b"></script>
 </body>
 </html>

@@ -12,6 +12,7 @@ const serviceCallRecordId = "__restoreflow_service_calls__";
 const equipmentKeys = ["dehumidifiers","airMovers","axials","negativeAir","hepaVacuums","extractors"];
 const carryForwardEquipmentKeys = ["dehumidifiers","airMovers","axials","negativeAir"];
 const unitStatuses = ["Needs access","No access","Demo needed","Under mitigation","Finished"];
+const routeStatuses = ["Not started","On the way","On site","Done"];
 const defaultTasks = () => [
   {id:crypto.randomUUID(),title:"Initial assessment",assignee:"",due:"",done:true},
   {id:crypto.randomUUID(),title:"Work authorization signed",assignee:"",due:"",done:true},
@@ -35,6 +36,12 @@ let cloudUser = null;
 let authMode = "signin";
 let cloudReady = false;
 const authRedirectTo = "https://tapia90.github.io/restoreflow-dashboard/";
+const $ = selector => document.querySelector(selector);
+const $$ = selector => document.querySelectorAll(selector);
+const bindClick = (selector, handler) => {
+  const element = $(selector);
+  if (element) element.onclick = handler;
+};
 
 function currentTimestamp() {
   return new Date().toISOString();
@@ -111,7 +118,8 @@ function normalizeServiceCalls(list) {
     title:call.title || "",
     type:call.type || "Equipment checkup",
     notes:call.notes || "",
-    completed:Boolean(call.completed),
+    status:routeStatuses.includes(call.status) ? call.status : (call.completed ? "Done" : "Not started"),
+    completed:call.status === "Done" || Boolean(call.completed),
     createdAt:call.createdAt || currentTimestamp(),
     updatedAt:call.updatedAt || call.createdAt || currentTimestamp()
   })).filter(call => call.title.trim()) : [];
@@ -317,6 +325,7 @@ const sortedReminders = () => [...reminders].sort((a,b) => compareDates(a.date,b
 const reminderStatus = reminder => reminder.done ? "Done" : pickupReminderStatus(reminder.date);
 const tmPacketReminders = () => sortedReminders().filter(reminder => !reminder.done && reminder.title.startsWith("Complete T&M packet -"));
 const serviceCallsForDate = date => serviceCalls.filter(call => call.date === date).sort((a,b) => (Number(a.order)||999) - (Number(b.order)||999) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+const serviceCallStatus = call => routeStatuses.includes(call.status) ? call.status : (call.completed ? "Done" : "Not started");
 const sortedJobs = list => [...list].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 const unitSummary = job => {
   const total = job.units?.length || 0;
@@ -442,9 +451,9 @@ function carryForwardEquipmentLogs(job) {
 }
 
 function showToast(title,message) {
-  document.querySelector("#toastTitle").textContent = title;
-  document.querySelector("#toastMessage").textContent = message;
-  const toast = document.querySelector("#toast");
+  $("#toastTitle").textContent = title;
+  $("#toastMessage").textContent = message;
+  const toast = $("#toast");
   toast.classList.add("show");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove("show"),2600);
@@ -951,18 +960,30 @@ function renderServiceCalls() {
   if (!form.elements.date.value) form.elements.date.value = new Date().toISOString().slice(0,10);
   const activeDate = form.elements.date.value;
   const calls = serviceCallsForDate(activeDate);
-  document.querySelector("#serviceCallCount").textContent = `${calls.length} on ${formatDate(activeDate)}`;
+  const remaining = calls.filter(call => serviceCallStatus(call) !== "Done").length;
+  document.querySelector("#serviceCallCount").textContent = `${remaining}/${calls.length} left`;
   document.querySelector("#serviceCallList").innerHTML = calls.length ? calls.map(call => `
-    <div class="service-call-item ${call.completed?"completed":""}" data-service-call="${call.id}">
+    <div class="service-call-item route-stop ${slug(serviceCallStatus(call))}" data-service-call="${call.id}">
       <div class="service-call-order">${escapeHtml(call.order || "•")}</div>
       <div class="service-call-main">
         <strong>${escapeHtml(call.title)}</strong>
         <span>${escapeHtml(call.type)}${call.notes?` · ${escapeHtml(call.notes)}`:""}</span>
       </div>
-      <button class="btn secondary small service-complete-btn">${call.completed?"Checkup done":"Mark checkup done"}</button>
+      <div class="route-status-wrap">
+        <span class="route-status ${slug(serviceCallStatus(call))}">${escapeHtml(serviceCallStatus(call))}</span>
+        <div class="route-status-buttons">
+          <button type="button" class="btn secondary small" data-route-status="On the way">On way</button>
+          <button type="button" class="btn secondary small" data-route-status="On site">On site</button>
+          <button type="button" class="btn secondary small" data-route-status="Done">Done</button>
+        </div>
+      </div>
+      <div class="route-move-buttons">
+        <button type="button" class="btn secondary small" data-route-move="-1" aria-label="Move route stop up">↑</button>
+        <button type="button" class="btn secondary small" data-route-move="1" aria-label="Move route stop down">↓</button>
+      </div>
       <button class="todo-delete" aria-label="Delete service call">×</button>
     </div>
-  `).join("") : `<div class="empty-state">No job checkups logged for this date. Add your route stops here in the order you plan to run them.</div>`;
+  `).join("") : `<div class="empty-state">No route stops logged for this date. Add your stops in the order you plan to run them.</div>`;
   form.onsubmit = event => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(form));
@@ -974,6 +995,7 @@ function renderServiceCalls() {
       title:data.title.trim(),
       type:data.type || "Equipment checkup",
       notes:data.notes || "",
+      status:"Not started",
       completed:false,
       createdAt:currentTimestamp(),
       updatedAt:currentTimestamp()
@@ -985,16 +1007,39 @@ function renderServiceCalls() {
   form.elements.date.onchange = renderServiceCalls;
   document.querySelectorAll("[data-service-call]").forEach(row => {
     const call = serviceCalls.find(item => item.id === row.dataset.serviceCall);
-    row.querySelector(".service-complete-btn").onclick = () => {
-      call.completed = true;
-      call.updatedAt = currentTimestamp();
-      saveJobs(); showToast("Checkup completed","This route stop was marked done.");
-    };
+    row.querySelectorAll("[data-route-status]").forEach(button => {
+      button.onclick = () => {
+        call.status = button.dataset.routeStatus;
+        call.completed = call.status === "Done";
+        call.updatedAt = currentTimestamp();
+        saveJobs(); showToast("Route stop updated",`${call.title} is marked ${call.status}.`);
+      };
+    });
+    row.querySelectorAll("[data-route-move]").forEach(button => {
+      button.onclick = () => {
+        moveServiceCall(call, Number(button.dataset.routeMove));
+      };
+    });
     row.querySelector(".todo-delete").onclick = () => {
       serviceCalls = serviceCalls.filter(item => item.id !== row.dataset.serviceCall);
-      saveJobs(); showToast("Checkup removed","Your daily route list was updated.");
+      saveJobs(); showToast("Route stop removed","Your daily route list was updated.");
     };
   });
+}
+
+function moveServiceCall(call, direction) {
+  const calls = serviceCallsForDate(call.date);
+  const index = calls.findIndex(item => item.id === call.id);
+  const swap = calls[index + direction];
+  if (!swap) return;
+  const fallbackOrder = index + 1;
+  const swapFallbackOrder = index + direction + 1;
+  const nextOrder = Number(swap.order) || swapFallbackOrder;
+  swap.order = Number(call.order) || fallbackOrder;
+  call.order = nextOrder;
+  call.updatedAt = currentTimestamp();
+  swap.updatedAt = currentTimestamp();
+  saveJobs(); showToast("Route order updated","Your stop order was adjusted.");
 }
 
 function renderTmPacketReminders() {
@@ -1110,12 +1155,13 @@ function showView(name, options = {}) {
   if (scrollToTop) window.scrollTo({top:0,behavior:"smooth"});
 }
 
-const jobModal=document.querySelector("#jobModal");
-const jobForm=document.querySelector("#newJobForm");
+const jobModal=$("#jobModal");
+const jobForm=$("#newJobForm");
 function updateModalLock() {
-  document.body.classList.toggle("modal-open", jobModal.classList.contains("open") || taskModal.classList.contains("open"));
+  document.body.classList.toggle("modal-open", Boolean(jobModal?.classList.contains("open") || taskModal?.classList.contains("open")));
 }
 function openJobModal(job=null) {
+  if (!jobModal || !jobForm) return;
   jobForm.reset();
   jobForm.elements.originalId.value=job?.id || "";
   document.querySelector("#jobModalEyebrow").textContent=job?"EDIT PROJECT":"NEW PROJECT";
@@ -1133,11 +1179,18 @@ function openJobModal(job=null) {
 }
 function closeJobModal(){jobModal.classList.remove("open");updateModalLock();}
 
-const taskModal=document.querySelector("#taskModal");
-function openTaskModal(jobId){document.querySelector("#newTaskForm").reset();document.querySelector('#newTaskForm [name="jobId"]').value=jobId;taskModal.classList.add("open");updateModalLock();}
-function closeTaskModal(){taskModal.classList.remove("open");updateModalLock();}
+const taskModal=$("#taskModal");
+function openTaskModal(jobId){
+  const form = $("#newTaskForm");
+  if (!taskModal || !form) return;
+  form.reset();
+  form.elements.jobId.value=jobId;
+  taskModal.classList.add("open");
+  updateModalLock();
+}
+function closeTaskModal(){if (taskModal) taskModal.classList.remove("open");updateModalLock();}
 
-jobForm.onsubmit=event=>{
+if (jobForm) jobForm.onsubmit=event=>{
   event.preventDefault();
   const data=Object.fromEntries(new FormData(jobForm));
   const editing=jobs.find(job=>job.id===data.originalId);
@@ -1158,7 +1211,8 @@ jobForm.onsubmit=event=>{
   }
 };
 
-document.querySelector("#newTaskForm").onsubmit=event=>{
+const newTaskForm = $("#newTaskForm");
+if (newTaskForm) newTaskForm.onsubmit=event=>{
   event.preventDefault();
   const data=Object.fromEntries(new FormData(event.target));
   const job=jobs.find(item=>item.id===data.jobId);
@@ -1170,32 +1224,32 @@ document.querySelector("#newTaskForm").onsubmit=event=>{
 
 function openDeleteConfirm(id){pendingDeleteId=id;document.querySelector("#confirmBar").classList.add("show");}
 function closeDeleteConfirm(){pendingDeleteId=null;document.querySelector("#confirmBar").classList.remove("show");}
-document.querySelector("#confirmDeleteBtn").onclick=()=>{
+bindClick("#confirmDeleteBtn", ()=>{
   jobs=jobs.filter(job=>job.id!==pendingDeleteId);closeDeleteConfirm();saveJobs();showView("jobs");showToast("Job deleted","The project was removed.");
-};
-document.querySelector("#cancelDeleteBtn").onclick=closeDeleteConfirm;
+});
+bindClick("#cancelDeleteBtn", closeDeleteConfirm);
 
 document.querySelectorAll("[data-view]").forEach(button=>button.onclick=()=>showView(button.dataset.view));
 document.querySelectorAll("[data-view-target]").forEach(button=>button.onclick=()=>showView(button.dataset.viewTarget));
-document.querySelector("#newJobBtn").onclick=()=>openJobModal();
+bindClick("#newJobBtn", ()=>openJobModal());
 document.querySelectorAll(".new-job-trigger").forEach(button=>button.onclick=()=>openJobModal());
-document.querySelector(".modal-close").onclick=closeJobModal;
-document.querySelector(".modal-cancel").onclick=closeJobModal;
-document.querySelector(".task-modal-close").onclick=closeTaskModal;
-document.querySelector(".task-modal-cancel").onclick=closeTaskModal;
-jobModal.onclick=event=>{if(event.target===jobModal)closeJobModal();};
-taskModal.onclick=event=>{if(event.target===taskModal)closeTaskModal();};
+bindClick("#jobModal .modal-close", closeJobModal);
+bindClick(".modal-cancel", closeJobModal);
+bindClick(".task-modal-close", closeTaskModal);
+bindClick(".task-modal-cancel", closeTaskModal);
+if (jobModal) jobModal.onclick=event=>{if(event.target===jobModal)closeJobModal();};
+if (taskModal) taskModal.onclick=event=>{if(event.target===taskModal)closeTaskModal();};
 
 document.querySelector("#stageFilter").innerHTML+=stages.map(stage=>`<option>${stage}</option>`).join("");
 ["jobSearch","stageFilter","typeFilter"].forEach(id=>document.querySelector(`#${id}`).addEventListener(id==="jobSearch"?"input":"change",renderJobs));
 document.querySelector("#globalSearch").onkeydown=event=>{
   if(event.key==="Enter"){showView("jobs");document.querySelector("#jobSearch").value=event.target.value;renderJobs();}
 };
-document.querySelector("#exportBtn").onclick=()=>{
+bindClick("#exportBtn", ()=>{
   const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),jobs},null,2)],{type:"application/json"});
   const link=document.createElement("a");link.href=URL.createObjectURL(blob);link.download=`restoreflow-backup-${new Date().toISOString().slice(0,10)}.json`;link.click();URL.revokeObjectURL(link.href);
   showToast("Backup exported","Your job data was downloaded.");
-};
+});
 function cloudConfigured() {
   const config=window.RESTOREFLOW_CONFIG||{};
   return Boolean(config.supabaseUrl && config.supabaseAnonKey && window.supabase);

@@ -95,6 +95,9 @@ kbd { background: #f2f4f7; border: 1px solid #e2e6ec; border-radius: 5px; color:
 .reminders-panel { background: #bfe7ca; border-color: #279455; box-shadow: 0 18px 40px rgba(26,113,71,.2); }
 .equipment-reminders-panel { background: #ffd097; border-color: #bd6818; box-shadow: 0 18px 40px rgba(155,87,20,.2); }
 .equipment-on-site-panel { background: #afe1fb; border-color: #1b85bc; box-shadow: 0 18px 40px rgba(22,103,145,.2); }
+.route-panel { background: #9fb4ee; border-color: #274fa7; box-shadow: 0 20px 44px rgba(34,64,137,.28); margin-bottom: 16px; }
+.route-panel .panel-header h3, .route-panel .panel-header p { color: #17213e; }
+.route-panel .pill { background: #223f91; color: white; }
 .service-calls-panel { background: #c6d6ff; border-color: #476dca; box-shadow: 0 18px 40px rgba(45,74,152,.2); margin-bottom: 14px; }
 .tm-packet-panel { background: #ffd6dc; border-color: #c8465a; box-shadow: 0 18px 40px rgba(154,46,62,.18); margin-bottom: 14px; }
 .compact-pipeline-panel { margin-top: 14px; background: #ffffff; border-color: #e5e9f0; }
@@ -237,13 +240,20 @@ tbody tr:hover { background: #f9fbff; }
 .service-call-form textarea { grid-column: 1/5; min-height: 54px; resize: vertical; font: inherit; }
 .service-call-form input:focus, .service-call-form select:focus, .service-call-form textarea:focus { border-color: #6f8fd9; box-shadow: 0 0 0 3px rgba(111,143,217,.2); }
 #serviceCallList { display: grid; gap: 8px; }
-.service-call-item { display: grid; grid-template-columns: 34px 1fr auto auto; gap: 10px; align-items: center; border: 1px solid #b8c8ec; background: rgba(255,255,255,.78); border-radius: 12px; padding: 10px; }
-.service-call-item.completed { opacity: .72; }
-.service-call-order { width: 28px; height: 28px; border-radius: 9px; background: #435fba; color: white; display: grid; place-items: center; font-weight: 800; font-size: 10px; }
+.service-call-item { display: grid; grid-template-columns: 34px minmax(0,1fr) auto auto auto; gap: 10px; align-items: center; border: 1px solid #6f86c5; background: rgba(255,255,255,.84); border-radius: 12px; padding: 10px; }
+.service-call-item.done { opacity: .72; }
+.service-call-order { width: 28px; height: 28px; border-radius: 9px; background: #223f91; color: white; display: grid; place-items: center; font-weight: 800; font-size: 10px; }
 .service-call-main strong, .service-call-main span { display: block; }
 .service-call-main strong { color: #1f2d4d; font-size: 11px; }
 .service-call-main span { color: #4f5f7c; font-size: 9px; margin-top: 2px; line-height: 1.4; }
-.service-call-item.completed .service-call-main strong { text-decoration: line-through; color: #6f7c94; }
+.service-call-item.done .service-call-main strong { text-decoration: line-through; color: #6f7c94; }
+.route-status-wrap { display: grid; gap: 6px; justify-items: end; }
+.route-status { border-radius: 12px; padding: 5px 8px; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; background: #e8ecf6; color: #435273; white-space: nowrap; }
+.route-status.ontheway { background: #fff2c9; color: #835400; }
+.route-status.onsite { background: #dff6ec; color: #176642; }
+.route-status.done { background: #e6eaf1; color: #60708a; }
+.route-status-buttons, .route-move-buttons { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.route-status-buttons .btn, .route-move-buttons .btn { padding: 5px 7px; font-size: 9px; }
 .tm-packet-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; border: 1px solid #df8996; background: rgba(255,255,255,.76); border-radius: 12px; padding: 11px; }
 .tm-packet-item input { accent-color: var(--red); }
 .tm-packet-main { border: 0; background: transparent; text-align: left; padding: 0; min-width: 0; }
@@ -350,7 +360,7 @@ tbody tr:hover { background: #f9fbff; }
 @media (max-width: 720px) {
   .app-shell { display: block; }.sidebar { display: none; }.topbar { padding: 0 16px; }.mobile-menu { display: block; }.global-search { width: auto; flex: 1; margin: 0 12px; }.global-search kbd { display: none; }
   .content { padding: 22px 15px 40px; }.page-heading { align-items: flex-start; gap: 15px; }.heading-actions { display: none; }.metric-grid { grid-template-columns: 1fr 1fr; gap: 9px; }.metric-card { padding: 14px; }
-  .dashboard-grid { display: block; }.dashboard-grid > .panel { margin-bottom: 12px; }.field-board { display: block; }.field-board > .panel, .field-side > .panel { margin-bottom: 12px; }.service-call-form { grid-template-columns: 1fr 80px; }.service-call-form input[name="title"], .service-call-form select, .service-call-form textarea { grid-column: 1/-1; }.service-call-form button { grid-column: 1/-1; }.service-call-item { grid-template-columns: 34px 1fr auto; }.service-call-item .service-complete-btn { grid-column: 2/4; justify-self: start; }.service-call-item .todo-delete { grid-column: 3/4; grid-row: 1/2; }.tm-packet-item { grid-template-columns: auto 1fr; }.tm-packet-item .reminder-status { grid-column: 2/3; justify-self: start; }.reminder-form { grid-template-columns: 1fr 1fr; }.reminder-form input[name="title"], .reminder-form select { grid-column: 1/-1; }.calendar-reminder-item { grid-template-columns: auto 1fr auto; }.calendar-reminder-item .reminder-status { grid-column: 2/3; justify-self: start; }.calendar-reminder-item .todo-delete { grid-column: 3/4; grid-row: 1/3; }.equipment-site-item { grid-template-columns: 1fr; }.equipment-site-counts { justify-content: flex-start; max-width: none; }.attention-banner { grid-template-columns: auto 1fr; }.attention-banner button { display: none; }.detail-layout { grid-template-columns: 1fr; }.detail-heading { gap: 12px; }.detail-actions { align-self: flex-start; }.info-grid { grid-template-columns: 1fr 1fr; }.form-grid { grid-template-columns: 1fr; }.form-grid label.full { grid-column: auto; }.workflow-strip { grid-template-columns: 1fr; }.note-form { grid-template-columns: 1fr; }
+  .dashboard-grid { display: block; }.dashboard-grid > .panel { margin-bottom: 12px; }.field-board { display: block; }.field-board > .panel, .field-side > .panel { margin-bottom: 12px; }.service-call-form { grid-template-columns: 1fr 80px; }.service-call-form input[name="title"], .service-call-form select, .service-call-form textarea { grid-column: 1/-1; }.service-call-form button { grid-column: 1/-1; }.service-call-item { grid-template-columns: 34px 1fr auto; align-items: start; }.service-call-item .route-status-wrap { grid-column: 2/4; justify-items: start; }.service-call-item .route-status-buttons { justify-content: flex-start; }.service-call-item .route-move-buttons { grid-column: 2/3; justify-content: flex-start; }.service-call-item .todo-delete { grid-column: 3/4; grid-row: 1/2; }.tm-packet-item { grid-template-columns: auto 1fr; }.tm-packet-item .reminder-status { grid-column: 2/3; justify-self: start; }.reminder-form { grid-template-columns: 1fr 1fr; }.reminder-form input[name="title"], .reminder-form select { grid-column: 1/-1; }.calendar-reminder-item { grid-template-columns: auto 1fr auto; }.calendar-reminder-item .reminder-status { grid-column: 2/3; justify-self: start; }.calendar-reminder-item .todo-delete { grid-column: 3/4; grid-row: 1/3; }.equipment-site-item { grid-template-columns: 1fr; }.equipment-site-counts { justify-content: flex-start; max-width: none; }.attention-banner { grid-template-columns: auto 1fr; }.attention-banner button { display: none; }.detail-layout { grid-template-columns: 1fr; }.detail-heading { gap: 12px; }.detail-actions { align-self: flex-start; }.info-grid { grid-template-columns: 1fr 1fr; }.form-grid { grid-template-columns: 1fr; }.form-grid label.full { grid-column: auto; }.workflow-strip { grid-template-columns: 1fr; }.note-form { grid-template-columns: 1fr; }
   .lost-job-form { grid-template-columns: 1fr; }.lost-job-form .full { grid-column: auto; }
   .unit-form { grid-template-columns: 1fr; }.unit-form .full { grid-column: auto; }.unit-item { grid-template-columns: 1fr; }.unit-delete { justify-self: start; }
   .equipment-summary { grid-template-columns: 1fr 1fr; }.equipment-form { grid-template-columns: 1fr 1fr; }.equipment-form .full { grid-column: 1/-1; }
