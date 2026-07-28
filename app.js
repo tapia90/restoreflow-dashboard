@@ -35,6 +35,7 @@ let cloudClient = null;
 let cloudUser = null;
 let authMode = "signin";
 let cloudReady = false;
+let cloudLoading = false;
 const authRedirectTo = "https://tapia90.github.io/restoreflow-dashboard/";
 const $ = selector => document.querySelector(selector);
 const $$ = selector => document.querySelectorAll(selector);
@@ -1279,6 +1280,7 @@ async function initializeCloud() {
   else showAuth();
   cloudClient.auth.onAuthStateChange(async(event,session)=>{
     if (event==="PASSWORD_RECOVERY") await completePasswordReset();
+    if ((event==="SIGNED_IN" || event==="TOKEN_REFRESHED") && session?.user) await enterCloudApp(session.user);
     if (event==="SIGNED_OUT"){cloudUser=null;cloudReady=false;showAuth();}
   });
 }
@@ -1294,6 +1296,8 @@ async function completePasswordReset() {
 }
 
 async function enterCloudApp(user) {
+  if (cloudLoading) return;
+  cloudLoading = true;
   cloudUser=user;
   const profileName = $("#profileName");
   if (profileName) profileName.textContent=user.email.split("@")[0];
@@ -1302,7 +1306,11 @@ async function enterCloudApp(user) {
     await loadCloudJobs();
     hideAuth();
   } catch(error) {
-    showAuth(); setAuthError(error.message);
+    hideAuth();
+    setSyncLabel("Cloud sync needs attention");
+    showToast("Cloud sync issue",error.message || "You are signed in, but cloud sync needs attention.");
+  } finally {
+    cloudLoading = false;
   }
 }
 
@@ -1335,6 +1343,7 @@ bindClick("#authReset", async()=>{
 const authForm = $("#authForm");
 if (authForm) authForm.onsubmit=async event=>{
   event.preventDefault(); setAuthError();
+  if (!cloudClient) return setAuthError("Cloud connection is still loading. Try again in a few seconds.");
   const email=$("#authEmail")?.value.trim() || "";
   const password=$("#authPassword")?.value || "";
   const authSubmit = $("#authSubmit");
